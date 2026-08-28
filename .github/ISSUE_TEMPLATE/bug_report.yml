@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible ForgeEmulation defect without sharing game files.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not upload copyrighted ROMs, firmware, or keys.
+  - type: input
+    id: version
+    attributes:
+      label: ForgeEmulation version
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options: [NES, SNES, Game Boy, Game Boy Color, Genesis / Mega Drive, Frontend]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: Remove personal paths if desired.

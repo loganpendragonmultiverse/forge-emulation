@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose one bounded improvement to ForgeEmulation.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful change.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Library, Runtime, Controls, Saves, Documentation, Supported systems]
+    validations:
+      required: true

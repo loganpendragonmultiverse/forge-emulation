@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "platform": "windows-x86_64",
+  "captured_at": "2026-08-27T18:00:00Z",
+  "distribution_note": "Each release carries the pinned binary, its license, and a corresponding source snapshot.",
+  "cores": [
+    {
+      "name": "Nestopia",
+      "systems": ["nes"],
+      "version": "1.54.0 bd355ea",
+      "license": "GPL-2.0",
+      "binary": "nestopia_libretro.dll",
+      "binary_url": "https://buildbot.libretro.com/nightly/windows/x86_64/latest/nestopia_libretro.dll.zip",
+      "binary_archive_sha256": "995fa73cdbbdbceb2f2b0e95eaf9cc03d888dc942d9cb65f15f148d54e5ff8fa",
+      "binary_sha256": "27dbe95806e58d751ea87e14580a78201fa084ac5f9f5998aede1389cd516ac3",
+      "source_repository": "https://github.com/libretro/nestopia",
+      "source_commit": "bd355eafcc7b90487eaae3a9d39c17dac6468280",
+      "source_archive": "nestopia-bd355eafcc7b90487eaae3a9d39c17dac6468280.zip",
+      "source_archive_sha256": "c6d009a743e10c3ad3273830bdd7ac94cbb9c5cae6726fbf96c2b1d70e8c3a44",
+      "license_file": "nestopia-GPL-2.0.txt"
+    },
+    {
+      "name": "bsnes",
+      "systems": ["snes"],
+      "version": "115",
+      "license": "GPL-3.0-or-later",
+      "binary": "bsnes_libretro.dll",
+      "binary_url": "https://buildbot.libretro.com/nightly/windows/x86_64/latest/bsnes_libretro.dll.zip",
+      "binary_archive_sha256": "8596ee1c301fce4b66d0d5840b849e9c520833aada43b732cd06da34777c5ab0",
+      "binary_sha256": "3dac43e66470250290ef36be2d9e87d4be2bd52b64339f7722821a04b7aeceeb",
+      "source_repository": "https://github.com/libretro/bsnes-libretro",
+      "source_commit": "6d19eef5835a792e241e33194b4c1e9b75405b88",
+      "source_archive": "bsnes-libretro-6d19eef5835a792e241e33194b4c1e9b75405b88.zip",
+      "source_archive_sha256": "e7a6175da226fb7fcdf2c2015003439a97e00af9b42c6ac1acb0714fb4526e01",
+      "license_file": "bsnes-GPL-3.0.txt"
+    },
+    {
+      "name": "SameBoy",
+      "systems": ["gb", "gbc"],
+      "version": "1.0.3 8230189",
+      "license": "MIT",
+      "binary": "sameboy_libretro.dll",
+      "binary_url": "https://buildbot.libretro.com/nightly/windows/x86_64/latest/sameboy_libretro.dll.zip",
+      "binary_archive_sha256": "63f590a51072c6959af4721fd329aff32e480859a35e71467207ff711193214f",
+      "binary_sha256": "b171875daa8b3303d65b18d717bad30e65b104da996b1d309d71a35459ce791f",
+      "source_repository": "https://github.com/libretro/SameBoy",
+      "source_commit": "8230189896a8bb6598574d302ba0ad3658f98ab4",
+      "source_archive": "SameBoy-8230189896a8bb6598574d302ba0ad3658f98ab4.zip",
+      "source_archive_sha256": "8b8aa627166f89bc04eada1f7ebd1f5714bcefc99b390d33fe70d29490897216",
+      "license_file": "SameBoy-MIT.txt"
+    },
+    {
+      "name": "BlastEm",
+      "systems": ["genesis"],
+      "version": "0.6.3-pre",
+      "license": "GPL-3.0",
+      "binary": "blastem_libretro.dll",
+      "binary_url": "https://buildbot.libretro.com/nightly/windows/x86_64/latest/blastem_libretro.dll.zip",
+      "binary_archive_sha256": "0a0c0468459d545bf153eabe0dd71e8a26892b29dab4497ab3386b09acc92230",
+      "binary_sha256": "bce28f5dd7248fc0175beba04bf312c0350e41ac0e008da5e762d7d1cda80455",
+      "source_repository": "https://github.com/libretro/blastem",
+      "source_commit": "aeb16cd0750fc23ab5e804efeb96f9b207985c41",
+      "source_archive": "blastem-aeb16cd0750fc23ab5e804efeb96f9b207985c41.zip",
+      "source_archive_sha256": "d95207d727b9adee0e94c446cbe70e2db1af720314f02c1ec96e6a883d8235ba",
+      "license_file": "BlastEm-GPL-3.0.txt"
+    }
+  ]
+}

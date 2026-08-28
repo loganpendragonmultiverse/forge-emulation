@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support and legal boundaries
+    url: https://github.com/loganpendragonmultiverse/forge-emulation/blob/main/SUPPORT.md
+    about: Read what diagnostic information is useful and what must not be uploaded.

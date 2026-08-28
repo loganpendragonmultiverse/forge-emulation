@@ -1,0 +1,46 @@
+name: Build pinned emulator cores
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            make
+            zip
+            mingw-w64-x86_64-gcc
+      - name: Build exact pinned sources
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          git clone https://github.com/libretro/bsnes-libretro.git bsnes
+          git -C bsnes checkout 6d19eef5835a792e241e33194b4c1e9b75405b88
+          test "$(git -C bsnes rev-parse HEAD)" = "6d19eef5835a792e241e33194b4c1e9b75405b88"
+          make -C bsnes platform=win -j2
+
+          git clone https://github.com/libretro/blastem.git blastem
+          git -C blastem checkout aeb16cd0750fc23ab5e804efeb96f9b207985c41
+          test "$(git -C blastem rev-parse HEAD)" = "aeb16cd0750fc23ab5e804efeb96f9b207985c41"
+          make -C blastem -f Makefile.libretro core -j2
+
+          mkdir core-artifacts
+          zip -j core-artifacts/bsnes-forge-6d19eef-windows-x64.zip bsnes/bsnes_libretro.dll
+          zip -j core-artifacts/blastem-forge-aeb16cd-windows-x64.zip blastem/blastem_libretro.dll
+          gcc --version | tee core-artifacts/compiler-version.txt
+          sha256sum core-artifacts/*.zip bsnes/bsnes_libretro.dll blastem/blastem_libretro.dll \
+            | tee core-artifacts/SHA256SUMS.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pinned-windows-cores
+          path: core-artifacts/*
+          if-no-files-found: error

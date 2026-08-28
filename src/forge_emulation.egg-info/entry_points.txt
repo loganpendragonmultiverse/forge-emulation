@@ -1,0 +1,3 @@
+[console_scripts]
+forge-emulation = forge_emulation.app:main
+forge-emulation-runtime = forge_emulation.runtime:main
