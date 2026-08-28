@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 - 2026-08-27
+## 1.0.0 - 2026-08-28
 
 - Added a portable Windows library for NES, SNES, Game Boy, Game Boy Color, and Sega Genesis / Mega Drive.
 - Added pinned Nestopia, bsnes, SameBoy, and BlastEm runtimes with source and license provenance.

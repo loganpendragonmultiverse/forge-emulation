@@ -35,10 +35,11 @@ def download(url: str, target: Path, expected: str) -> None:
 def main() -> int:
     manifest: dict[str, Any] = json.loads(MANIFEST.read_text(encoding="utf-8"))
     for core in manifest["cores"]:
-        archive = ROOT / "third_party" / "downloads" / f"{core['name']}.zip"
-        if not archive.is_file() or sha256(archive) != core["binary_archive_sha256"]:
-            print(f"Downloading {core['name']} binary")
-            download(core["binary_url"], archive, core["binary_archive_sha256"])
+        archive = ROOT / "third_party" / "binaries" / core["binary_archive"]
+        if not archive.is_file():
+            raise RuntimeError(f"Pinned binary archive is missing: {archive}")
+        if sha256(archive) != core["binary_archive_sha256"]:
+            raise RuntimeError(f"Pinned binary archive hash mismatch: {archive.name}")
         with ZipFile(archive) as bundle:
             member = next(name for name in bundle.namelist() if name.endswith(core["binary"]))
             target = ROOT / "cores" / core["binary"]

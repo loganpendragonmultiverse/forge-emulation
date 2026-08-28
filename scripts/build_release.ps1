@@ -52,6 +52,7 @@ try {
     Copy-Item -LiteralPath "cores" -Destination (Join-Path $InternalRoot "cores") -Recurse
     Copy-Item -LiteralPath "third_party\licenses" -Destination (Join-Path $NoticesRoot "licenses") -Recurse
     Copy-Item -LiteralPath "third_party\source" -Destination (Join-Path $NoticesRoot "corresponding-source") -Recurse
+    Copy-Item -LiteralPath "third_party\build-provenance" -Destination (Join-Path $NoticesRoot "build-provenance") -Recurse
     Copy-Item -LiteralPath "third_party\core-manifest.json" -Destination $NoticesRoot
     Copy-Item -LiteralPath "THIRD_PARTY_LICENSES.md" -Destination $NoticesRoot
     Copy-Item -LiteralPath "CORE_LICENSE_MATRIX.md" -Destination $NoticesRoot

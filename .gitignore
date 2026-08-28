@@ -7,10 +7,11 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-build/
-build-*/
-dist/
-dist-*/
+/build/
+/build-*/
+/dist/
+/dist-*/
+*.egg-info/
 *.spec
 userdata/
 cores/*.dll
