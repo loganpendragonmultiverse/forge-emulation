@@ -19,6 +19,7 @@ jobs:
             make
             zip
             mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-python
       - name: Build exact pinned sources
         shell: msys2 {0}
         run: |
