@@ -16,6 +16,7 @@ import pygame
 from pygame._sdl2.audio import AUDIO_S16, AudioDevice
 from pygame._sdl2.sdl2 import INIT_AUDIO, init_subsystem
 
+from .controller import binding_pressed, default_bindings
 from .libretro import (
     RETRO_DEVICE_ID_JOYPAD_MASK,
     RETRO_DEVICE_JOYPAD,
@@ -28,11 +29,17 @@ STATE_MAGIC = b"FORGESTATE1\n"
 
 
 class AudioSink:
-    def __init__(self) -> None:
+    def __init__(self, volume: int = 100, muted: bool = False) -> None:
         self._chunks: deque[bytes] = deque()
         self._offset = 0
         self._lock = threading.Lock()
         self.device: AudioDevice | None = None
+        self.volume = max(0, min(100, int(volume)))
+        self.muted = muted
+
+    def set_level(self, volume: int, muted: bool) -> None:
+        self.volume = max(0, min(100, int(volume)))
+        self.muted = bool(muted)
 
     def open(self, sample_rate: int) -> None:
         self.device = AudioDevice(
@@ -50,6 +57,15 @@ class AudioSink:
     def push(self, data: bytes) -> None:
         if not data:
             return
+        level = 0 if self.muted else self.volume
+        if level == 0:
+            data = bytes(len(data))
+        elif level != 100:
+            samples = list(struct.unpack(f"<{len(data) // 2}h", data))
+            data = struct.pack(
+                f"<{len(samples)}h",
+                *(max(-32768, min(32767, round(sample * level / 100))) for sample in samples),
+            )
         with self._lock:
             self._chunks.append(data)
 
@@ -84,13 +100,19 @@ class RuntimeSession:
         self.core_path = Path(config["core_path"])
         self.content_path = Path(config["content_path"])
         self.save_path = Path(config["save_path"])
-        self.state_path = Path(config["state_path"])
+        legacy_state = Path(config.get("state_path", "slot-1.state"))
+        self.state_dir = Path(config.get("state_dir", legacy_state.parent))
+        self.state_slot = max(1, min(9, int(config.get("state_slot", 1))))
         self.screenshot_dir = Path(config["screenshot_dir"])
         self.system_dir = Path(config["system_dir"])
         self.game_id = str(config["game_id"])
         self.title = str(config["title"])
         self.fullscreen = bool(config.get("fullscreen", False))
         self.audio_enabled = bool(config.get("audio", True))
+        self.volume = max(0, min(100, int(config.get("volume", 100))))
+        self.muted = bool(config.get("muted", False))
+        self.scaling = str(config.get("scaling", "fit"))
+        self.video_filter = str(config.get("video_filter", "nearest"))
         self.max_frames = max(0, int(config.get("max_frames", 0)))
         self.frame: bytes | None = None
         self.frame_width = 0
@@ -101,8 +123,13 @@ class RuntimeSession:
         self.paused = False
         self.message = ""
         self.message_until = 0.0
-        self.audio = AudioSink()
+        self.audio = AudioSink(self.volume, self.muted)
+        self.menu_open = False
+        self.menu_index = 0
+        self._menu_controller_latch = False
         self.joystick: pygame.joystick.JoystickType | None = None
+        profiles = config.get("controller_profiles", {})
+        self.controller_profiles = profiles if isinstance(profiles, dict) else {}
         self.core = LibretroCore(self.core_path, self.system_dir, self.save_path.parent)
         self.core.configure_callbacks(
             video=self._video,
@@ -138,6 +165,8 @@ class RuntimeSession:
         return int(bool(self.input_mask & (1 << control_id)))
 
     def _current_input_mask(self) -> int:
+        if self.menu_open:
+            return 0
         keys = pygame.key.get_pressed()
         mapping = {
             0: keys[pygame.K_z],
@@ -154,23 +183,56 @@ class RuntimeSession:
             11: keys[pygame.K_w],
         }
         if self.joystick:
-            button_map = {0: 0, 8: 1, 1: 2, 9: 3, 2: 4, 3: 6, 10: 9, 11: 10}
-            for retro_id, button in button_map.items():
-                if button < self.joystick.get_numbuttons():
-                    mapping[retro_id] = mapping.get(retro_id, False) or bool(
-                        self.joystick.get_button(button)
-                    )
-            if self.joystick.get_numhats():
-                horizontal, vertical = self.joystick.get_hat(0)
-                mapping[4] = mapping.get(4, False) or vertical > 0
-                mapping[5] = mapping.get(5, False) or vertical < 0
-                mapping[6] = mapping.get(6, False) or horizontal < 0
-                mapping[7] = mapping.get(7, False) or horizontal > 0
+            bindings = default_bindings()
+            profile = self.controller_profiles.get(self.joystick.get_guid(), {})
+            stored = profile.get("bindings", {}) if isinstance(profile, dict) else {}
+            if isinstance(stored, dict):
+                bindings.update(
+                    {
+                        action: binding
+                        for action, binding in stored.items()
+                        if action in bindings and isinstance(binding, dict)
+                    }
+                )
+            retro_actions = {
+                0: "b",
+                1: "y",
+                2: "select",
+                3: "start",
+                4: "up",
+                5: "down",
+                6: "left",
+                7: "right",
+                8: "a",
+                9: "x",
+                10: "l",
+                11: "r",
+            }
+            for retro_id, action in retro_actions.items():
+                mapping[retro_id] = mapping.get(retro_id, False) or binding_pressed(
+                    self.joystick, bindings[action]
+                )
         mask = 0
         for control_id, pressed in mapping.items():
             if pressed:
                 mask |= 1 << control_id
         return mask
+
+    def _controller_bindings(self) -> dict[str, dict[str, Any]]:
+        bindings: dict[str, dict[str, Any]] = default_bindings()
+        if not self.joystick:
+            return bindings
+        profile = self.controller_profiles.get(self.joystick.get_guid(), {})
+        stored = profile.get("bindings", {}) if isinstance(profile, dict) else {}
+        if isinstance(stored, dict):
+            bindings.update(
+                {
+                    action: binding
+                    for action, binding in stored.items()
+                    if action in bindings and isinstance(binding, dict)
+                }
+            )
+        return bindings
 
     def _surface_from_frame(self) -> pygame.Surface | None:
         if not self.frame or not self.frame_width or not self.frame_height:
@@ -202,6 +264,10 @@ class RuntimeSession:
         self.message = message
         self.message_until = time.monotonic() + 2.5
 
+    @property
+    def state_path(self) -> Path:
+        return self.state_dir / f"slot-{self.state_slot}.state"
+
     def _save_state(self) -> None:
         metadata = {
             "game_id": self.game_id,
@@ -215,7 +281,7 @@ class RuntimeSession:
         temporary = self.state_path.with_suffix(self.state_path.suffix + ".partial")
         temporary.write_bytes(STATE_MAGIC + struct.pack("<I", len(header)) + header + state)
         temporary.replace(self.state_path)
-        self._show_message("State saved")
+        self._show_message(f"State saved to slot {self.state_slot}")
 
     def _load_state(self) -> None:
         data = self.state_path.read_bytes()
@@ -229,7 +295,97 @@ class RuntimeSession:
         if metadata.get("core") != self.core.name:
             raise RuntimeError("This state was created by a different emulator core.")
         self.core.unserialize(data[header_start + header_length :])
-        self._show_message("State loaded")
+        self._show_message(f"State loaded from slot {self.state_slot}")
+
+    @staticmethod
+    def scaled_size(source: tuple[int, int], target: tuple[int, int], mode: str) -> tuple[int, int]:
+        source_width, source_height = source
+        target_width, target_height = target
+        if mode == "stretch":
+            return max(1, target_width), max(1, target_height)
+        scale = min(target_width / source_width, target_height / source_height)
+        if mode == "integer" and scale >= 1:
+            scale = max(1, int(scale))
+        return max(1, round(source_width * scale)), max(1, round(source_height * scale))
+
+    def _menu_items(self) -> list[str]:
+        return [
+            "Resume",
+            f"Save state — slot {self.state_slot}",
+            f"Load state — slot {self.state_slot}",
+            f"State slot — {self.state_slot}",
+            "Screenshot",
+            "Reset game",
+            f"Scaling — {self.scaling.title()}",
+            f"Filter — {self.video_filter.title()}",
+            f"Volume — {'Muted' if self.muted else str(self.volume) + '%'}",
+            "Toggle fullscreen",
+            "Exit game",
+        ]
+
+    def _adjust_menu(self, delta: int) -> None:
+        if self.menu_index == 3:
+            self.state_slot = ((self.state_slot - 1 + delta) % 9) + 1
+        elif self.menu_index == 6:
+            values = ["fit", "integer", "stretch"]
+            self.scaling = values[(values.index(self.scaling) + delta) % len(values)]
+        elif self.menu_index == 7:
+            self.video_filter = "smooth" if self.video_filter == "nearest" else "nearest"
+        elif self.menu_index == 8:
+            self.muted = False
+            self.volume = max(0, min(100, self.volume + delta * 10))
+            self.audio.set_level(self.volume, self.muted)
+
+    def _activate_menu(self, current_surface: pygame.Surface | None) -> None:
+        if self.menu_index == 0:
+            self.menu_open = False
+        elif self.menu_index == 1:
+            self._save_state()
+        elif self.menu_index == 2:
+            self._load_state()
+        elif self.menu_index == 3:
+            self._adjust_menu(1)
+        elif self.menu_index == 4 and current_surface:
+            self._save_screenshot(current_surface)
+        elif self.menu_index == 5:
+            self.core.reset()
+            self._show_message("Game reset")
+        elif self.menu_index in {6, 7}:
+            self._adjust_menu(1)
+        elif self.menu_index == 8:
+            self.muted = not self.muted
+            self.audio.set_level(self.volume, self.muted)
+        elif self.menu_index == 9:
+            self._toggle_fullscreen()
+        elif self.menu_index == 10:
+            self.running = False
+
+    def _toggle_fullscreen(self) -> None:
+        self.fullscreen = not self.fullscreen
+        flags = pygame.DOUBLEBUF | (pygame.FULLSCREEN if self.fullscreen else pygame.RESIZABLE)
+        size = (0, 0) if self.fullscreen else (960, 720)
+        pygame.display.set_mode(size, flags)
+
+    def _draw_menu(self, screen: pygame.Surface, font: pygame.font.Font) -> None:
+        overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+        overlay.fill((4, 6, 10, 190))
+        screen.blit(overlay, (0, 0))
+        items = self._menu_items()
+        width = min(560, screen.get_width() - 40)
+        panel = pygame.Rect(0, 0, width, min(screen.get_height() - 40, 96 + len(items) * 38))
+        panel.center = screen.get_rect().center
+        pygame.draw.rect(screen, (20, 24, 33), panel, border_radius=14)
+        pygame.draw.rect(screen, (59, 68, 84), panel, 1, border_radius=14)
+        heading = font.render("FORGE QUICK MENU", True, (244, 122, 103))
+        screen.blit(heading, (panel.x + 24, panel.y + 20))
+        for index, label in enumerate(items):
+            row = pygame.Rect(panel.x + 16, panel.y + 58 + index * 38, panel.width - 32, 34)
+            if index == self.menu_index:
+                pygame.draw.rect(screen, (45, 53, 68), row, border_radius=7)
+            text = font.render(
+                label, True, (248, 249, 252) if index == self.menu_index else (174, 182, 196)
+            )
+            screen.blit(text, (row.x + 12, row.y + 7))
 
     def _save_screenshot(self, surface: pygame.Surface) -> None:
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -247,10 +403,36 @@ class RuntimeSession:
             elif event.type == pygame.JOYDEVICEREMOVED and self.joystick:
                 if self.joystick.get_instance_id() == event.instance_id:
                     self.joystick = None
+            elif self.menu_open and event.type == pygame.JOYHATMOTION:
+                horizontal, vertical = event.value
+                if vertical:
+                    self.menu_index = (self.menu_index - vertical) % len(self._menu_items())
+                if horizontal:
+                    self._adjust_menu(horizontal)
+            elif self.menu_open and event.type == pygame.JOYBUTTONDOWN:
+                if event.button == 0:
+                    self._activate_menu(current_surface)
+                elif event.button == 1:
+                    self.menu_open = False
             elif event.type == pygame.KEYDOWN:
                 try:
-                    if event.key == pygame.K_ESCAPE:
-                        self.running = False
+                    if self.menu_open:
+                        if event.key in {pygame.K_ESCAPE, pygame.K_TAB}:
+                            self.menu_open = False
+                        elif event.key == pygame.K_UP:
+                            self.menu_index = (self.menu_index - 1) % len(self._menu_items())
+                        elif event.key == pygame.K_DOWN:
+                            self.menu_index = (self.menu_index + 1) % len(self._menu_items())
+                        elif event.key == pygame.K_LEFT:
+                            self._adjust_menu(-1)
+                        elif event.key == pygame.K_RIGHT:
+                            self._adjust_menu(1)
+                        elif event.key in {pygame.K_RETURN, pygame.K_SPACE}:
+                            self._activate_menu(current_surface)
+                        continue
+                    if event.key == pygame.K_ESCAPE or event.key == pygame.K_TAB:
+                        self.menu_open = True
+                        self.menu_index = 0
                     elif event.key == pygame.K_SPACE:
                         self.paused = not self.paused
                         self._show_message("Paused" if self.paused else "Resumed")
@@ -264,7 +446,7 @@ class RuntimeSession:
                         self.core.reset()
                         self._show_message("Game reset")
                     elif event.key == pygame.K_RETURN and event.mod & pygame.KMOD_ALT:
-                        pygame.display.toggle_fullscreen()
+                        self._toggle_fullscreen()
                 except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
                     logging.exception("Runtime action failed")
                     self._show_message(str(exc))
@@ -300,23 +482,32 @@ class RuntimeSession:
             completed_frames = 0
             while self.running and not self.core.shutdown_requested:
                 self._handle_events(current_surface)
-                if not self.paused:
+                if self.joystick:
+                    bindings = self._controller_bindings()
+                    select_start = binding_pressed(
+                        self.joystick, bindings["select"]
+                    ) and binding_pressed(self.joystick, bindings["start"])
+                    if select_start and not self._menu_controller_latch:
+                        self.menu_open = not self.menu_open
+                        self.menu_index = 0
+                    self._menu_controller_latch = bool(select_start)
+                if not self.paused and not self.menu_open:
                     self.core.run()
                     completed_frames += 1
                     current_surface = self._surface_from_frame() or current_surface
                 screen.fill((8, 10, 15))
                 if current_surface:
                     area = screen.get_rect()
-                    scale = min(
-                        area.width / current_surface.get_width(),
-                        area.height / current_surface.get_height(),
+                    size = self.scaled_size(current_surface.get_size(), area.size, self.scaling)
+                    transform = (
+                        pygame.transform.smoothscale
+                        if self.video_filter == "smooth"
+                        else pygame.transform.scale
                     )
-                    size = (
-                        max(1, round(current_surface.get_width() * scale)),
-                        max(1, round(current_surface.get_height() * scale)),
-                    )
-                    rendered = pygame.transform.scale(current_surface, size)
+                    rendered = transform(current_surface, size)
                     screen.blit(rendered, rendered.get_rect(center=area.center))
+                if self.menu_open:
+                    self._draw_menu(screen, font)
                 if self.message and time.monotonic() < self.message_until:
                     text = font.render(self.message, True, (245, 247, 250))
                     panel = text.get_rect()
@@ -351,6 +542,14 @@ class RuntimeSession:
             "core_name": core_name,
             "core_version": core_version,
             "exit_reason": exit_reason,
+            "state_slot": self.state_slot,
+            "runtime_settings": {
+                "fullscreen": self.fullscreen,
+                "scaling": self.scaling,
+                "video_filter": self.video_filter,
+                "volume": self.volume,
+                "muted": self.muted,
+            },
         }
 
 

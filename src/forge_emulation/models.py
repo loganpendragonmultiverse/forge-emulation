@@ -36,6 +36,8 @@ class GameCandidate:
 class Game:
     id: str
     title: str
+    custom_title: str | None
+    artwork_path: Path | None
     system_id: str
     source_path: Path
     archive_member: str | None
@@ -50,3 +52,7 @@ class Game:
     session_count: int
     last_played: str | None
     added_at: str
+
+    @property
+    def display_title(self) -> str:
+        return self.custom_title or self.title

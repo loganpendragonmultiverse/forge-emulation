@@ -65,6 +65,14 @@ class LibraryDatabase:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(games)").fetchall()
+            }
+            if "custom_title" not in columns:
+                connection.execute("ALTER TABLE games ADD COLUMN custom_title TEXT")
+            if "artwork_path" not in columns:
+                connection.execute("ALTER TABLE games ADD COLUMN artwork_path TEXT")
 
     def connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10)
@@ -138,7 +146,7 @@ class LibraryDatabase:
             conditions.append("g.system_id = ?")
             parameters.append(system_id)
         if query:
-            conditions.append("g.title LIKE ? ESCAPE '\\'")
+            conditions.append("COALESCE(g.custom_title, g.title) LIKE ? ESCAPE '\\'")
             escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             parameters.append(f"%{escaped}%")
         if favorites_only:
@@ -153,7 +161,8 @@ class LibraryDatabase:
                 ORDER BY r2.last_seen DESC LIMIT 1
             )
             WHERE {where}
-            ORDER BY COALESCE(g.last_played, '') DESC, g.title COLLATE NOCASE
+            ORDER BY COALESCE(g.last_played, '') DESC,
+                     COALESCE(g.custom_title, g.title) COLLATE NOCASE
         """
         with closing(self.connect()) as connection:
             rows = connection.execute(statement, parameters).fetchall()
@@ -177,6 +186,25 @@ class LibraryDatabase:
             connection.execute(
                 "UPDATE games SET favorite = ? WHERE id = ?", (int(favorite), game_id)
             )
+
+    def set_metadata(
+        self, game_id: str, *, custom_title: str | None, artwork_path: Path | None
+    ) -> None:
+        title = custom_title.strip() if custom_title and custom_title.strip() else None
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE games SET custom_title = ?, artwork_path = ? WHERE id = ?",
+                (title, str(artwork_path) if artwork_path else None, game_id),
+            )
+
+    def recent_games(self, *, limit: int = 12, query: str = "") -> list[Game]:
+        games = [game for game in self.list_games(query=query) if game.last_played]
+        return games[: max(0, limit)]
+
+    def integrity_check(self) -> str:
+        with closing(self.connect()) as connection:
+            row = connection.execute("PRAGMA integrity_check").fetchone()
+        return str(row[0]) if row else "unknown"
 
     def record_session(
         self,
@@ -231,6 +259,8 @@ class LibraryDatabase:
         return Game(
             id=str(row["id"]),
             title=str(row["title"]),
+            custom_title=str(row["custom_title"]) if row["custom_title"] else None,
+            artwork_path=Path(str(row["artwork_path"])) if row["artwork_path"] else None,
             system_id=str(row["system_id"]),
             source_path=Path(str(row["path"])),
             archive_member=str(row["archive_member"]) if row["archive_member"] else None,

@@ -17,6 +17,10 @@ class AppPaths:
     states: Path
     screenshots: Path
     cache: Path
+    controller_profiles: Path
+    preferences: Path
+    artwork: Path
+    backups: Path
 
     def ensure(self) -> None:
         for path in (
@@ -27,6 +31,8 @@ class AppPaths:
             self.states,
             self.screenshots,
             self.cache,
+            self.artwork,
+            self.backups,
         ):
             path.mkdir(parents=True, exist_ok=True)
 
@@ -54,6 +60,10 @@ def app_paths(root: Path | None = None) -> AppPaths:
         states=userdata / "states",
         screenshots=userdata / "screenshots",
         cache=userdata / "cache",
+        controller_profiles=userdata / "controller-profiles.json",
+        preferences=userdata / "preferences.json",
+        artwork=userdata / "artwork",
+        backups=userdata / "backups",
     )
     paths.ensure()
     return paths

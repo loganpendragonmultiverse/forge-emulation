@@ -17,6 +17,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
         ("sameboy_libretro.dll", "forge-test.gb", "SameBoy"),
         ("sameboy_libretro.dll", "forge-test.gbc", "SameBoy"),
         ("blastem_libretro.dll", "forge-test.md", "BlastEm"),
+        ("mgba_libretro.dll", "forge-test.gba", "mGBA"),
+        ("smsplus_libretro.dll", "forge-test.gg", "SMS Plus GX"),
+        ("stella2014_libretro.dll", "forge-test.a26", "Stella 2014"),
     ],
 )
 def test_core_loads_and_runs_original_test_cartridge(

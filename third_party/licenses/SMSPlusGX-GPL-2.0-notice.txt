@@ -1,0 +1,5 @@
+SMS Plus GX is Copyright (c) Charles MacDonald, Eke-Eke, and contributors.
+
+This core is distributed under GNU GPL version 2. The upstream license notice is
+in docs/license inside the bundled corresponding source archive. The complete
+GPL-2.0 text is also distributed in nestopia-GPL-2.0.txt.

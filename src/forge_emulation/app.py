@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QApplication
 
 from .database import LibraryDatabase
 from .paths import app_paths
-from .ui.main_window import MainWindow
+from .ui.main_window import APP_STYLE, MainWindow
 
 
 def _configure_logging(path: Path) -> None:
@@ -28,6 +28,7 @@ def main() -> int:
     application = QApplication(sys.argv)
     application.setApplicationName("ForgeEmulation")
     application.setOrganizationName("Logan Pendragon Multiverse")
+    application.setStyleSheet(APP_STYLE)
     database = LibraryDatabase(paths.database)
     window = MainWindow(database, paths)
     window.show()

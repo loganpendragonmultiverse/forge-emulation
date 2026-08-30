@@ -76,6 +76,10 @@ def verify_runtime(package: Path, manifest: dict[str, Any]) -> None:
         ("gb", "sameboy_libretro.dll", "forge-test.gb"),
         ("gbc", "sameboy_libretro.dll", "forge-test.gbc"),
         ("genesis", "blastem_libretro.dll", "forge-test.md"),
+        ("gba", "mgba_libretro.dll", "forge-test.gba"),
+        ("sms", "smsplus_libretro.dll", "forge-test.sms"),
+        ("gamegear", "smsplus_libretro.dll", "forge-test.gg"),
+        ("atari2600", "stella2014_libretro.dll", "forge-test.a26"),
     ]
     with tempfile.TemporaryDirectory(prefix="forge-emulation-package-") as temporary:
         root = Path(temporary)
@@ -91,7 +95,7 @@ def verify_runtime(package: Path, manifest: dict[str, Any]) -> None:
                 "core_path": str(package / "_internal" / "cores" / core_filename),
                 "content_path": str(roms / rom_filename),
                 "save_path": str(session / "save.srm"),
-                "state_path": str(session / "slot-0.state"),
+                "state_dir": str(session / "states"),
                 "screenshot_dir": str(session / "screenshots"),
                 "system_dir": str(session / "system"),
                 "log_path": str(session / "runtime.log"),
@@ -153,7 +157,7 @@ def main() -> int:
     manifest = json.loads((PROJECT_ROOT / "third_party" / "core-manifest.json").read_text())
     verify_files(package, manifest)
     verify_runtime(package, manifest)
-    print("Packaged frontend and all five runtime targets passed.")
+    print("Packaged frontend and all nine runtime targets passed.")
     return 0
 
 

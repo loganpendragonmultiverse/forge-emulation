@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "platform": "windows-x86_64",
-  "captured_at": "2026-08-28T16:20:00Z",
+  "captured_at": "2026-08-29T18:00:00Z",
   "distribution_note": "Each release carries the pinned binary, its license, and a corresponding source snapshot.",
   "cores": [
     {
@@ -67,6 +67,51 @@
       "source_archive": "blastem-aeb16cd0750fc23ab5e804efeb96f9b207985c41.zip",
       "source_archive_sha256": "d95207d727b9adee0e94c446cbe70e2db1af720314f02c1ec96e6a883d8235ba",
       "license_file": "BlastEm-GPL-3.0.txt"
+    },
+    {
+      "name": "mGBA",
+      "systems": ["gba"],
+      "version": "0.11-219 e31759b",
+      "license": "MPL-2.0",
+      "binary": "mgba_libretro.dll",
+      "binary_archive": "mgba-buildbot-20260829-windows-x64.zip",
+      "binary_archive_sha256": "d1f1f8e3a761722b8238887f92161448a34e028ef71e27425531d2a77891418e",
+      "binary_sha256": "b8b90fb72ae66925456440715f7d99904969f8c9996017cf78dd6b14dbfa33f8",
+      "source_repository": "https://github.com/mgba-emu/mgba",
+      "source_commit": "e31759b24e7a4e3899285ff720d7b573ac328ae7",
+      "source_archive": "mgba-e31759b24e7a4e3899285ff720d7b573ac328ae7.zip",
+      "source_archive_sha256": "154f68251fee49bf127162432c9ccc1c73840aba21663ec511014bbdd07b99ff",
+      "license_file": "mGBA-MPL-2.0-notice.txt"
+    },
+    {
+      "name": "SMS Plus GX",
+      "systems": ["sms", "gamegear"],
+      "version": "1.8 8a63f82",
+      "license": "GPL-2.0",
+      "binary": "smsplus_libretro.dll",
+      "binary_archive": "smsplus-buildbot-20260829-windows-x64.zip",
+      "binary_archive_sha256": "7ed995969a411209adb7290eefce911ada933266e45c1dc253d77aac9fe7715f",
+      "binary_sha256": "72cde4dd5539bb4f613119d49364082fb98ee58b321e54911852f11c56c11a7a",
+      "source_repository": "https://github.com/libretro/smsplus-gx",
+      "source_commit": "8a63f82d3c3bbf7215a31f86a4aaa13fb68a579f",
+      "source_archive": "smsplus-gx-8a63f82d3c3bbf7215a31f86a4aaa13fb68a579f.zip",
+      "source_archive_sha256": "2937fa9830d3facb76de0ceafa390182694140060265f80702c3b93cd5bfb277",
+      "license_file": "SMSPlusGX-GPL-2.0-notice.txt"
+    },
+    {
+      "name": "Stella 2014",
+      "systems": ["atari2600"],
+      "version": "3.9.3 4a7da82",
+      "license": "GPL-2.0",
+      "binary": "stella2014_libretro.dll",
+      "binary_archive": "stella2014-buildbot-20260829-windows-x64.zip",
+      "binary_archive_sha256": "46d849d0d02c1887b0262c2317b765f6e25883120bc8d0d87a6e6fb9843f33cd",
+      "binary_sha256": "da696c0c9d55bc3b9dc75606c21be7b836ffec3b70c9ad9084bf281436b54ed8",
+      "source_repository": "https://github.com/libretro/stella2014-libretro",
+      "source_commit": "4a7da82595d27b8df7af1ecb467a64b642a41bc9",
+      "source_archive": "stella2014-libretro-4a7da82595d27b8df7af1ecb467a64b642a41bc9.zip",
+      "source_archive_sha256": "11ab087325ba8fe721e3cb4c816d201c52d92bdc7f95da7e3d7451ec3e38efdb",
+      "license_file": "Stella2014-GPL-2.0-notice.txt"
     }
   ]
 }

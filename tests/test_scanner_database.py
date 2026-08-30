@@ -12,8 +12,18 @@ def test_scans_files_and_deduplicates_content(rom_directory: Path, tmp_path: Pat
     duplicate.write_bytes((rom_directory / "forge-test.nes").read_bytes())
     games, errors = scan_paths([rom_directory, duplicate])
     assert errors == []
-    assert {game.system_id for game in games} == {"nes", "snes", "gb", "gbc", "genesis"}
-    assert len(games) == 5
+    assert {game.system_id for game in games} == {
+        "nes",
+        "snes",
+        "gb",
+        "gbc",
+        "genesis",
+        "gba",
+        "sms",
+        "gamegear",
+        "atari2600",
+    }
+    assert len(games) == 9
 
 
 def test_scans_supported_members_inside_zip(rom_directory: Path, tmp_path: Path) -> None:
@@ -31,8 +41,8 @@ def test_database_library_workflow(rom_directory: Path, tmp_path: Path) -> None:
     database = LibraryDatabase(tmp_path / "library.sqlite3")
     games, errors = scan_paths([rom_directory])
     assert errors == []
-    assert database.import_candidates(games) == (5, 5)
-    assert database.import_candidates(games) == (0, 5)
+    assert database.import_candidates(games) == (9, 9)
+    assert database.import_candidates(games) == (0, 9)
 
     nes = database.list_games(system_id="nes")[0]
     database.set_favorite(nes.id, True)

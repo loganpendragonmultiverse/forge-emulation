@@ -29,6 +29,7 @@ def test_paths_create_private_data_directories(tmp_path: Path) -> None:
     assert paths.states.is_dir()
     assert paths.screenshots.is_dir()
     assert paths.cache.is_dir()
+    assert paths.controller_profiles == paths.userdata / "controller-profiles.json"
 
 
 def test_frozen_paths_keep_cores_internal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -56,6 +57,7 @@ def test_launcher_prepares_isolated_runtime_config(rom_directory: Path, tmp_path
     assert config["fullscreen"] is True
     assert result_path.parent == config_path.parent
     assert Path(config["save_path"]).is_relative_to(paths.saves)
+    assert config["controller_profiles"] == {}
 
 
 def test_frozen_launcher_uses_internal_runtime(
