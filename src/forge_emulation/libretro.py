@@ -21,6 +21,7 @@ RETRO_ENVIRONMENT_SET_VARIABLES = 16
 RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE = 17
 RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME = 18
 RETRO_ENVIRONMENT_GET_LIBRETRO_PATH = 19
+RETRO_ENVIRONMENT_GET_LOG_INTERFACE = 27
 RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY = 30
 RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY = 31
 RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO = 32
@@ -130,6 +131,11 @@ InputPollCallback = ctypes.CFUNCTYPE(None)
 InputStateCallback = ctypes.CFUNCTYPE(
     ctypes.c_int16, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint
 )
+LogCallback = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_char_p)
+
+
+class RetroLogCallback(ctypes.Structure):
+    _fields_ = [("log", LogCallback)]
 
 
 def _text(value: bytes | None) -> str:
@@ -201,6 +207,8 @@ class LibretroCore:
         audio_batch_callback = AudioSampleBatchCallback(audio_batch)
         input_poll_callback = InputPollCallback(input_poll)
         input_state_callback = InputStateCallback(input_state)
+        log_callback = LogCallback(self._core_log)
+        self._log_interface = RetroLogCallback(log_callback)
         self._callbacks = [
             environment_callback,
             video_callback,
@@ -208,6 +216,7 @@ class LibretroCore:
             audio_batch_callback,
             input_poll_callback,
             input_state_callback,
+            log_callback,
         ]
         self.library.retro_set_environment(environment_callback)
         self.library.retro_set_video_refresh(video_callback)
@@ -215,6 +224,10 @@ class LibretroCore:
         self.library.retro_set_audio_sample_batch(audio_batch_callback)
         self.library.retro_set_input_poll(input_poll_callback)
         self.library.retro_set_input_state(input_state_callback)
+
+    @staticmethod
+    def _core_log(level: int, message: bytes | None) -> None:
+        logging.info("Core log [%s]: %s", level, _text(message).rstrip())
 
     def initialize(self) -> None:
         self.library.retro_init()
@@ -326,6 +339,9 @@ class LibretroCore:
             return self._set_string_pointer(data, self._core_path_bytes)
         if command == RETRO_ENVIRONMENT_GET_USERNAME:
             return self._set_string_pointer(data, self._username_bytes)
+        if command == RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
+            ctypes.cast(data, ctypes.POINTER(RetroLogCallback))[0] = self._log_interface
+            return True
         if command == RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
             requested = ctypes.cast(data, ctypes.POINTER(ctypes.c_int))[0]
             if requested not in {

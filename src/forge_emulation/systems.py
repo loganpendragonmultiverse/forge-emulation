@@ -66,6 +66,50 @@ SYSTEMS: tuple[SystemDefinition, ...] = (
         core_license="GPL-3.0",
         accent="#4b80e6",
     ),
+    SystemDefinition(
+        id="gba",
+        name="Nintendo Game Boy Advance",
+        short_name="GBA",
+        extensions=frozenset({".gba"}),
+        core_filename="mgba_libretro.dll",
+        core_name="mGBA",
+        core_version="0.11-219 (e31759b)",
+        core_license="MPL-2.0",
+        accent="#6d63d9",
+    ),
+    SystemDefinition(
+        id="sms",
+        name="Sega Master System",
+        short_name="SMS",
+        extensions=frozenset({".sms"}),
+        core_filename="smsplus_libretro.dll",
+        core_name="SMS Plus GX",
+        core_version="1.8 (8a63f82)",
+        core_license="GPL-2.0",
+        accent="#d34343",
+    ),
+    SystemDefinition(
+        id="gamegear",
+        name="Sega Game Gear",
+        short_name="GG",
+        extensions=frozenset({".gg"}),
+        core_filename="smsplus_libretro.dll",
+        core_name="SMS Plus GX",
+        core_version="1.8 (8a63f82)",
+        core_license="GPL-2.0",
+        accent="#3e9e8d",
+    ),
+    SystemDefinition(
+        id="atari2600",
+        name="Atari 2600",
+        short_name="A2600",
+        extensions=frozenset({".a26"}),
+        core_filename="stella2014_libretro.dll",
+        core_name="Stella 2014",
+        core_version="3.9.3 (4a7da82)",
+        core_license="GPL-2.0",
+        accent="#c46f31",
+    ),
 )
 
 SYSTEM_BY_ID = {system.id: system for system in SYSTEMS}
@@ -102,6 +146,11 @@ def detect_system(filename: str, header: bytes, file_size: int) -> tuple[str, st
         return ("gbc" if color_flag in {0x80, 0xC0} or extension == ".gbc" else "gb", "header")
     if len(header) >= 0x104 and header[0x100:0x104] == b"SEGA":
         return "genesis", "header"
+    if extension in {".sms", ".gg"} and any(
+        offset + 8 <= len(header) and header[offset : offset + 8] == b"TMR SEGA"
+        for offset in (0x1FF0, 0x3FF0, 0x7FF0)
+    ):
+        return ("gamegear" if extension == ".gg" else "sms"), "header"
     if extension in {".sfc", ".smc"} and _looks_like_snes(header, file_size):
         return "snes", "header"
 

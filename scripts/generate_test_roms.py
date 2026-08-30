@@ -87,6 +87,38 @@ def snes_rom() -> bytes:
     return bytes(rom)
 
 
+def gba_rom() -> bytes:
+    rom = bytearray(0x40000)
+    rom[0:4] = (0xEAFFFFFE).to_bytes(4, "little")  # ARM branch to self.
+    rom[0xA0:0xAC] = b"FORGE TEST  "
+    rom[0xAC:0xB0] = b"F0RG"
+    rom[0xB0:0xB2] = b"00"
+    rom[0xB2] = 0x96
+    checksum = 0
+    for value in rom[0xA0:0xBD]:
+        checksum = (checksum - value) & 0xFF
+    rom[0xBD] = (checksum - 0x19) & 0xFF
+    return bytes(rom)
+
+
+def sms_rom(*, game_gear: bool) -> bytes:
+    rom = bytearray(0x8000)
+    rom[0:3] = bytes((0xC3, 0x00, 0x00))  # Z80 jump to self.
+    rom[0x7FF0:0x7FF8] = b"TMR SEGA"
+    checksum = sum(rom[:0x7FF0]) & 0xFFFF
+    rom[0x7FFA:0x7FFC] = checksum.to_bytes(2, "little")
+    rom[0x7FFC:0x7FFF] = bytes((0x01, 0x00, 0x00))
+    rom[0x7FFF] = 0x7C if game_gear else 0x4C
+    return bytes(rom)
+
+
+def atari2600_rom() -> bytes:
+    rom = bytearray([0xEA] * 0x1000)
+    rom[0:4] = bytes((0x78, 0x4C, 0x00, 0xF0))  # SEI; JMP $F000.
+    rom[0xFFA:0x1000] = (0xF000).to_bytes(2, "little") * 3
+    return bytes(rom)
+
+
 def write_test_roms(destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     images = {
@@ -95,6 +127,10 @@ def write_test_roms(destination: Path) -> None:
         "forge-test.gbc": game_boy_rom(color=True),
         "forge-test.md": genesis_rom(),
         "forge-test.sfc": snes_rom(),
+        "forge-test.gba": gba_rom(),
+        "forge-test.sms": sms_rom(game_gear=False),
+        "forge-test.gg": sms_rom(game_gear=True),
+        "forge-test.a26": atari2600_rom(),
     }
     for filename, content in images.items():
         (destination / filename).write_bytes(content)

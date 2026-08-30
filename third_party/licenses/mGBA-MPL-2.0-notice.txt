@@ -1,0 +1,5 @@
+mGBA Copyright (c) 2013-2026 Jeffrey Pfau and contributors.
+
+This Source Code Form is subject to the terms of the Mozilla Public License,
+version 2.0. The complete license is in LICENSE inside the bundled corresponding
+source archive, and is available at https://mozilla.org/MPL/2.0/.

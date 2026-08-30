@@ -17,6 +17,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
         ("sameboy_libretro.dll", "forge-test.gb"),
         ("sameboy_libretro.dll", "forge-test.gbc"),
         ("blastem_libretro.dll", "forge-test.md"),
+        ("mgba_libretro.dll", "forge-test.gba"),
+        ("stella2014_libretro.dll", "forge-test.a26"),
     ],
 )
 def test_full_runtime_renders_frames_with_each_supported_system(

@@ -9,8 +9,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .content import materialize_game
+from .controller import ControllerProfileStore
 from .models import Game
 from .paths import AppPaths
+from .settings import SettingsStore
 from .systems import SYSTEM_BY_ID
 
 
@@ -22,7 +24,7 @@ class GameLauncher:
     def __init__(self, paths: AppPaths):
         self.paths = paths
 
-    def prepare(self, game: Game, *, fullscreen: bool = False) -> tuple[list[str], Path]:
+    def prepare(self, game: Game, *, fullscreen: bool | None = None) -> tuple[list[str], Path]:
         system = SYSTEM_BY_ID[game.system_id]
         core_path = self.paths.cores / system.core_filename
         if not core_path.is_file():
@@ -36,19 +38,28 @@ class GameLauncher:
         session_dir.mkdir(parents=True, exist_ok=False)
         config_path = session_dir / "launch.json"
         result_path = session_dir / "result.json"
+        settings = SettingsStore(self.paths.preferences).for_game(game.id)
         config = {
             "game_id": game.id,
-            "title": game.title,
+            "title": game.display_title,
             "system_id": game.system_id,
             "content_path": str(content_path),
             "core_path": str(core_path),
             "save_path": str(self.paths.saves / game.system_id / safe_game_id / "save.srm"),
-            "state_path": str(self.paths.states / game.system_id / safe_game_id / "slot-0.state"),
+            "state_dir": str(self.paths.states / game.system_id / safe_game_id),
             "screenshot_dir": str(self.paths.screenshots / game.system_id / safe_game_id),
             "system_dir": str(self.paths.userdata / "system"),
             "log_path": str(self.paths.logs / "runtime.log"),
             "result_path": str(result_path),
-            "fullscreen": fullscreen,
+            "fullscreen": settings.fullscreen if fullscreen is None else fullscreen,
+            "scaling": settings.scaling,
+            "video_filter": settings.video_filter,
+            "volume": settings.volume,
+            "muted": settings.muted,
+            "state_slot": settings.state_slot,
+            "controller_profiles": ControllerProfileStore.load(
+                self.paths.controller_profiles
+            ).export_profiles(),
             "prepared_at": datetime.now(UTC).isoformat(timespec="seconds"),
         }
         config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")

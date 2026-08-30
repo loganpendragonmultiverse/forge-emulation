@@ -1,0 +1,6 @@
+Stella 2014 is Copyright (c) Bradford W. Mott, Stephen Anthony, the Stella Team,
+and contributors.
+
+This core is distributed under GNU GPL version 2. The upstream license notice is
+in stella/license.txt inside the bundled corresponding source archive. The
+complete GPL-2.0 text is also distributed in nestopia-GPL-2.0.txt.

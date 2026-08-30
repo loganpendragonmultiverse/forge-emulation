@@ -8,18 +8,24 @@ from forge_emulation.systems import SYSTEMS, detect_system
 
 
 @pytest.mark.parametrize(
-    ("filename", "expected"),
+    ("filename", "expected", "method"),
     [
-        ("forge-test.nes", "nes"),
-        ("forge-test.sfc", "snes"),
-        ("forge-test.gb", "gb"),
-        ("forge-test.gbc", "gbc"),
-        ("forge-test.md", "genesis"),
+        ("forge-test.nes", "nes", "header"),
+        ("forge-test.sfc", "snes", "header"),
+        ("forge-test.gb", "gb", "header"),
+        ("forge-test.gbc", "gbc", "header"),
+        ("forge-test.md", "genesis", "header"),
+        ("forge-test.gba", "gba", "extension-fallback"),
+        ("forge-test.sms", "sms", "header"),
+        ("forge-test.gg", "gamegear", "header"),
+        ("forge-test.a26", "atari2600", "extension-fallback"),
     ],
 )
-def test_detects_generated_cartridges(rom_directory: Path, filename: str, expected: str) -> None:
+def test_detects_generated_cartridges(
+    rom_directory: Path, filename: str, expected: str, method: str
+) -> None:
     content = (rom_directory / filename).read_bytes()
-    assert detect_system(filename, content, len(content)) == (expected, "header")
+    assert detect_system(filename, content, len(content)) == (expected, method)
 
 
 def test_ambiguous_bin_is_rejected() -> None:

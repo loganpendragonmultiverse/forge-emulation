@@ -1,4 +1,4 @@
-ForgeEmulation 1.0.0 for Windows x64
+ForgeEmulation 1.2.0 for Windows x64
 ====================================
 
 START HERE: Double-click ForgeEmulation.exe.
@@ -9,6 +9,12 @@ them.
 
 Select a system to see its bundled emulator core and version. Select
 "Controls & help" in the sidebar, or press F1, for the complete in-app guide.
+Open "Controller settings" to create a local profile for each connected
+controller and remap gameplay, library select, and library back actions.
+
+In the library, use the D-pad or left stick to move, the configured library
+select button to activate the focused control, and the configured library back
+button to leave a filter or clear search.
 
 The _internal folder contains required application and emulator components.
 You do not need to open anything inside it.
@@ -21,13 +27,21 @@ A / S            Y / X
 Right Shift      Select
 Enter            Start
 Space            Pause
-F5 / F8          Save / load state
+Escape / Tab     Open or close the quick menu
+F5 / F8          Save / load the selected state slot
 F12              Screenshot
 Ctrl+R           Reset
 Alt+Enter        Fullscreen
-Escape           Exit game
 F1               Open Controls & help in the library
 
-The mouse operates the library interface. It is not mapped to gameplay.
+The quick menu provides nine state slots, screenshots, reset, scaling,
+filtering, volume/mute, fullscreen, and a deliberate Exit Game action.
+
+Use Continue Playing for recent games. Display & audio provides global defaults;
+Game Settings in Details creates a per-game override. Backup & restore never
+includes ROM files. Local title/artwork edits and diagnostics stay on this PC.
+
+The mouse, keyboard, and controller operate the library interface. The mouse is
+not mapped to gameplay.
 
 No commercial games or firmware are included.
