@@ -281,6 +281,17 @@ class RuntimeSession:
         temporary = self.state_path.with_suffix(self.state_path.suffix + ".partial")
         temporary.write_bytes(STATE_MAGIC + struct.pack("<I", len(header)) + header + state)
         temporary.replace(self.state_path)
+        surface = self._surface_from_frame()
+        thumbnail = self.state_path.with_suffix(".png")
+        if surface is not None:
+            preview = pygame.transform.smoothscale(
+                surface, (240, max(1, round(240 * surface.get_height() / surface.get_width())))
+            )
+            pending = thumbnail.with_suffix(".partial.png")
+            pygame.image.save(preview, str(pending))
+            pending.replace(thumbnail)
+        elif thumbnail.exists():
+            thumbnail.unlink()
         self._show_message(f"State saved to slot {self.state_slot}")
 
     def _load_state(self) -> None:
@@ -294,6 +305,11 @@ class RuntimeSession:
             raise RuntimeError("This state belongs to a different game.")
         if metadata.get("core") != self.core.name:
             raise RuntimeError("This state was created by a different emulator core.")
+        if metadata.get("core_version") != self.core.version:
+            raise RuntimeError(
+                "State core version differs. Use the matching core version; "
+                "this state was not loaded."
+            )
         self.core.unserialize(data[header_start + header_length :])
         self._show_message(f"State loaded from slot {self.state_slot}")
 

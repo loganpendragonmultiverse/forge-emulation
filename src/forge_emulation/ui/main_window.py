@@ -49,8 +49,10 @@ from ..diagnostics import diagnostic_text
 from ..launch import GameLauncher, LaunchError
 from ..models import Game, GameCandidate
 from ..paths import AppPaths
+from ..profile_exchange import export_profiles, read_profiles
 from ..scanner import scan_paths
 from ..settings import RuntimeSettings, SettingsStore
+from ..state_browser import browse_states
 from ..systems import SYSTEM_BY_ID, SYSTEMS
 
 APP_STYLE = """
@@ -188,7 +190,15 @@ class ScanTask(QRunnable):
 
 
 class GameDetailsDialog(QDialog):
-    def __init__(self, game: Game, edit: Any, settings: Any, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        game: Game,
+        edit: Any,
+        settings: Any,
+        parent: QWidget | None = None,
+        *,
+        states: Any = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"{game.display_title} — ForgeEmulation")
         self.setMinimumWidth(620)
@@ -238,6 +248,10 @@ class GameDetailsDialog(QDialog):
         settings_button = QPushButton("Game settings")
         settings_button.setObjectName("Secondary")
         settings_button.clicked.connect(lambda: settings(game))
+        states_button = QPushButton("Save-state browser")
+        states_button.setObjectName("Secondary")
+        states_button.clicked.connect(lambda: states(game) if states else None)
+        actions.addWidget(states_button)
         close_button = QPushButton("Close")
         close_button.setObjectName("Secondary")
         close_button.clicked.connect(self.accept)
@@ -414,6 +428,7 @@ class ControllerSettingsDialog(QDialog):
         self.joystick: pygame.joystick.JoystickType | None = None
         self.waiting_action: str | None = None
         self.capture_baseline: set[tuple[str, int, str, int]] = set()
+        self.wizard_actions: list[str] = []
         self.mapping_buttons: dict[str, QPushButton] = {}
         self.setWindowTitle("Controller settings — ForgeEmulation")
         self.setMinimumSize(620, 720)
@@ -436,6 +451,25 @@ class ControllerSettingsDialog(QDialog):
         self.controller_select = QComboBox()
         self.controller_select.currentIndexChanged.connect(self._controller_changed)
         outer.addWidget(self.controller_select)
+        self.wizard_status = QLabel(
+            "Choose Guided mapping to configure all gameplay and library actions."
+        )
+        self.wizard_status.setWordWrap(True)
+        outer.addWidget(self.wizard_status)
+        self.live_inputs = QLabel("Connect a controller to see live button and axis feedback.")
+        self.live_inputs.setWordWrap(True)
+        outer.addWidget(self.live_inputs)
+        tools = QHBoxLayout()
+        for label, callback in [
+            ("Guided mapping", self._start_wizard),
+            ("Import profiles", self._import_profiles),
+            ("Export profiles", self._export_profiles),
+        ]:
+            button = QPushButton(label)
+            button.setObjectName("Secondary")
+            button.clicked.connect(callback)
+            tools.addWidget(button)
+        outer.addLayout(tools)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -484,8 +518,9 @@ class ControllerSettingsDialog(QDialog):
         button = QPushButton("Not assigned")
         button.setObjectName("Secondary")
         button.setMinimumWidth(190)
+        button.setMinimumHeight(40)
         button.clicked.connect(
-            lambda _checked=False, selected=action: self._begin_capture(selected)
+            lambda _checked=False, selected=action: self._manual_capture(selected)
         )
         self.mapping_buttons[action] = button
         row.addWidget(label, 1)
@@ -517,6 +552,8 @@ class ControllerSettingsDialog(QDialog):
         self._refresh_labels()
 
     def _controller_changed(self, index: int) -> None:
+        self.wizard_actions = []
+        self.waiting_action = None
         if index < 0 or not self.controller_select.currentData():
             self.joystick = None
             return
@@ -539,11 +576,19 @@ class ControllerSettingsDialog(QDialog):
             button.setEnabled(bool(guid))
             button.setText(binding_label(bindings.get(action)))
 
+    def _manual_capture(self, action: str) -> None:
+        self.wizard_actions = []
+        self._refresh_labels()
+        self._begin_capture(action)
+
     def _begin_capture(self, action: str) -> None:
         if not self.joystick:
             return
         self._pump()
         self.waiting_action = action
+        self.wizard_status.setText(
+            "Map " + action.replace("_", " ") + ": release controls, then press the desired input."
+        )
         self.capture_baseline = capture_inputs(self.joystick)
         self.mapping_buttons[action].setText("Press a control…")
 
@@ -554,9 +599,19 @@ class ControllerSettingsDialog(QDialog):
         if connected_count != visible_count:
             self._refresh_controllers()
             return
-        if not self.waiting_action or not self.joystick:
+        if not self.joystick:
             return
         active = capture_inputs(self.joystick)
+        self.live_inputs.setText(
+            "Live controls: "
+            + (
+                ", ".join(binding_label(captured_binding(item)) for item in sorted(active))
+                or "released / neutral"
+            )
+        )
+        if not self.waiting_action:
+            return
+        self.capture_baseline.intersection_update(active)
         new_inputs = active - self.capture_baseline
         if not new_inputs:
             return
@@ -570,10 +625,61 @@ class ControllerSettingsDialog(QDialog):
             captured_binding(value),
         )
         self._refresh_labels()
+        if self.wizard_actions:
+            self._begin_capture(self.wizard_actions.pop(0))
+        else:
+            self.wizard_status.setText(
+                "Mapping saved. Test the assigned control below or continue in a game."
+            )
+
+    def _start_wizard(self) -> None:
+        if not self.joystick:
+            return
+        self.wizard_actions = [item[0] for item in GAMEPLAY_ACTIONS] + [
+            item[0] for item in LIBRARY_ACTIONS
+        ]
+        self._begin_capture(self.wizard_actions.pop(0))
+
+    def _import_profiles(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Import controller profiles", "", "JSON (*.json)"
+        )
+        if not filename:
+            return
+        try:
+            profiles = read_profiles(Path(filename))
+            overlap = set(profiles) & set(self.store.profiles)
+            if (
+                QMessageBox.question(
+                    self,
+                    "Review profile import",
+                    f"Import {len(profiles)} controller profiles? "
+                    f"{len(overlap)} existing controller profiles will be replaced.",
+                )
+                != QMessageBox.StandardButton.Yes
+            ):
+                return
+            self.store.profiles.update(profiles)
+            self.store.save()
+            self._refresh_labels()
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "Profile import", str(error))
+
+    def _export_profiles(self) -> None:
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export controller profiles", "controller-profiles.json", "JSON (*.json)"
+        )
+        if not filename:
+            return
+        try:
+            export_profiles(self.store, Path(filename))
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "Profile export", str(error))
 
     def _reset(self) -> None:
         if not self.joystick:
             return
+        self.wizard_actions = []
         self.store.reset(self.joystick.get_guid(), self.joystick.get_name())
         self.waiting_action = None
         self._refresh_labels()
@@ -1508,8 +1614,58 @@ class MainWindow(QMainWindow):
         self.database.set_favorite(game.id, favorite)
         self.refresh()
 
+    def show_states(self, game: Game) -> None:
+        system = SYSTEM_BY_ID[game.system_id]
+        directory = self.paths.states / game.system_id / game.sha256[:24]
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Save-state browser")
+        dialog.setMinimumSize(620, 500)
+        dialog.setStyleSheet(APP_STYLE)
+        layout = QVBoxLayout(dialog)
+        heading = QLabel("Save states · " + game.display_title)
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.viewport().setStyleSheet("background: #0b0e13;")
+        content = QWidget()
+        content.setStyleSheet("background: #0b0e13;")
+        rows = QVBoxLayout(content)
+        states = browse_states(directory, game.id, system.core_name, system.core_version)
+        if not states:
+            rows.addWidget(QLabel("No save states. Save a slot with F5 during gameplay."))
+        for state in states:
+            text = QLabel(
+                f"Slot {state['slot']} · {state['created_at']}\n"
+                f"Core {state['core_version']}\n"
+                f"{state['warning'] or 'Matches current game and core version'}"
+            )
+            text.setWordWrap(True)
+            rows.addWidget(text)
+            if state["thumbnail"]:
+                image = QLabel()
+                image.setPixmap(QPixmap(state["thumbnail"]))
+                rows.addWidget(image)
+            button = QPushButton(f"Use slot {state['slot']} on next launch")
+            button.setEnabled(not state["warning"])
+
+            def select_slot(_checked: bool = False, slot: int = int(state["slot"])) -> None:
+                store = SettingsStore(self.paths.preferences)
+                values = dict(store.game_overrides.get(game.id, {}))
+                values["state_slot"] = slot
+                store.set_game_override(game.id, values)
+                dialog.accept()
+
+            button.clicked.connect(select_slot)
+            rows.addWidget(button)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
+        dialog.exec()
+
     def show_details(self, game: Game) -> None:
-        GameDetailsDialog(game, self.edit_metadata, self.open_display_settings, self).exec()
+        GameDetailsDialog(
+            game, self.edit_metadata, self.open_display_settings, self, states=self.show_states
+        ).exec()
 
     def play_game(self, game: Game) -> None:
         if self.active_process and self.active_process.poll() is None:
