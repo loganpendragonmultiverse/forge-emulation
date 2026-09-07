@@ -518,6 +518,7 @@ class ControllerSettingsDialog(QDialog):
         button = QPushButton("Not assigned")
         button.setObjectName("Secondary")
         button.setMinimumWidth(190)
+        button.setMinimumHeight(40)
         button.clicked.connect(
             lambda _checked=False, selected=action: self._manual_capture(selected)
         )
@@ -1626,7 +1627,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(heading)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.viewport().setStyleSheet("background: #0b0e13;")
         content = QWidget()
+        content.setStyleSheet("background: #0b0e13;")
         rows = QVBoxLayout(content)
         states = browse_states(directory, game.id, system.core_name, system.core_version)
         if not states:
