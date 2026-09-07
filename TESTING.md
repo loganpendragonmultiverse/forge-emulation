@@ -42,3 +42,11 @@ Manual acceptance for a release:
    and return from a filter or search with the configured library back button.
 
 The packaged verifier requires an explicit marker written only after the Qt window is created. A living PyInstaller crash dialog is not accepted as successful startup. The archive verifier also rejects nested wrapper folders, top-level runtime helpers, handoff files, and non-system `icuuc.dll` contamination.
+
+## Version 1.3.0: reviewed improvements
+
+Add a save-state browser with thumbnails and compatibility warnings, plus guided controller mapping, live input feedback and validated profile exchange.
+
+Browse nine save slots with capture timestamps, core versions and available thumbnails; select the next launch slot without changing game files. State loading rejects a different core version. Controller mapping walks through gameplay and library controls, waits for held controls to be released, and shows live inputs. Versioned profile import validates actions, binding types and limits before previewing replacement counts; export refuses existing files. Core binaries and pins remain unchanged. Automated tests use generated fixtures; physical-controller and user-owned-cartridge acceptance is required before the stable Windows release.
+
+Candidate validation: 53 automated tests passed at 92.03% coverage; packaged frontend and all nine generated-ROM runtime targets passed; ZIP layout and SHA-256 verified. Physical-controller and user-owned-game acceptance is pending.
