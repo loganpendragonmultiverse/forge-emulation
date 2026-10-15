@@ -47,6 +47,7 @@ from ..controller import (
 from ..database import LibraryDatabase
 from ..diagnostics import diagnostic_text
 from ..launch import GameLauncher, LaunchError
+from ..location_review import LocationRecord, LocationReview, preview_locations
 from ..models import Game, GameCandidate
 from ..paths import AppPaths
 from ..profile_exchange import export_profiles, read_profiles
@@ -187,6 +188,25 @@ class ScanTask(QRunnable):
         except Exception as exc:
             logging.exception("Library scan failed")
             self.signals.failed.emit(str(exc))
+
+
+class LocationReviewSignals(QObject):
+    completed = Signal(object)
+    failed = Signal(str)
+
+
+class LocationReviewTask(QRunnable):
+    def __init__(self, records: list[LocationRecord], root: Path):
+        super().__init__()
+        self.records = records
+        self.root = root
+        self.signals = LocationReviewSignals()
+
+    def run(self) -> None:
+        try:
+            self.signals.completed.emit(preview_locations(self.records, self.root))
+        except Exception:
+            self.signals.failed.emit("Location review could not finish; no library data changed.")
 
 
 class GameDetailsDialog(QDialog):
@@ -895,6 +915,10 @@ class MainWindow(QMainWindow):
         self.backup_button.setObjectName("Secondary")
         self.backup_button.clicked.connect(self.backup_restore)
         nav_layout.addWidget(self.backup_button)
+        self.location_review_button = QPushButton("Review game locations")
+        self.location_review_button.setObjectName("Secondary")
+        self.location_review_button.clicked.connect(self.review_locations)
+        nav_layout.addWidget(self.location_review_button)
         self.diagnostics_button = QPushButton("Diagnostics")
         self.diagnostics_button.setObjectName("Secondary")
         self.diagnostics_button.clicked.connect(self.show_diagnostics)
@@ -1581,6 +1605,31 @@ class MainWindow(QMainWindow):
                 widget.deleteLater()
             elif child_layout:
                 MainWindow._clear_layout(child_layout)
+
+    def review_locations(self) -> None:
+        selected = QFileDialog.getExistingDirectory(
+            self, "Choose a game folder to review (read-only)"
+        )
+        if not selected:
+            return
+        task = LocationReviewTask(self.database.location_records(), Path(selected))
+        task.signals.completed.connect(self._show_location_review)
+        task.signals.failed.connect(lambda text: QMessageBox.warning(self, "Location review", text))
+        self.thread_pool.start(task)
+
+    def _show_location_review(self, report: LocationReview) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Review game locations — read-only")
+        dialog.resize(820, 520)
+        layout = QVBoxLayout(dialog)
+        editor = QPlainTextEdit()
+        editor.setReadOnly(True)
+        editor.setPlainText(report.as_text())
+        layout.addWidget(editor)
+        close = QPushButton("Close")
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        dialog.exec()
 
     def choose_folder(self) -> None:
         selected = QFileDialog.getExistingDirectory(self, "Choose a game folder")

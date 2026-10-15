@@ -4,7 +4,7 @@ ForgeEmulation is a local-first Windows desktop library for legally obtained ret
 
 ![ForgeEmulation library with original synthetic test cartridges](docs/screenshots/library.png)
 
-## Public Version 1.2
+## Features
 
 - Nintendo Entertainment System through Nestopia
 - Super Nintendo Entertainment System through bsnes
@@ -87,7 +87,7 @@ See [BUILDING.md](BUILDING.md), [TESTING.md](TESTING.md), and [ARCHITECTURE.md](
 
 ## Project status
 
-Version 1.2 is a complete, bounded Windows release. Bug reports and focused pull
+Version 1.4.0 is a bounded Windows release. Bug reports and focused pull
 requests are welcome; broader feature work is considered only in a separately
 reviewed release.
 
@@ -99,4 +99,11 @@ Add a save-state browser with thumbnails and compatibility warnings, plus guided
 
 Browse nine save slots with capture timestamps, core versions and available thumbnails; select the next launch slot without changing game files. State loading rejects a different core version. Controller mapping walks through gameplay and library controls, waits for held controls to be released, and shows live inputs. Versioned profile import validates actions, binding types and limits before previewing replacement counts; export refuses existing files. Core binaries and pins remain unchanged. Automated tests use generated fixtures; physical-controller and user-owned-cartridge acceptance is required before the stable Windows release.
 
-Candidate validation: 53 automated tests passed at 92.03% coverage; packaged frontend and all nine generated-ROM runtime targets passed; ZIP layout and SHA-256 verified. Physical-controller and user-owned-game acceptance is pending.
+Version 1.3 validation: 53 automated tests passed at 92.03% coverage; packaged frontend and all nine generated-ROM runtime targets passed; ZIP layout and SHA-256 verified. Physical-controller and user-owned-game acceptance is pending.
+
+
+## Location review (1.4.0)
+
+Choose **Review game locations**, then a readable game folder. The background scan compares stored location paths with that folder and displays file-present, container-present/member-unverified, missing-candidate, unverified and outside-folder results. It never opens ROM contents or changes library flags, metadata, history or saves. Missing/unreadable roots and traversal errors suppress missing candidates. A disconnected mount that still appears as a readable empty folder cannot be distinguished from an empty folder: missing candidates are review evidence, never deletion instructions. ZIP membership, ROM integrity and concurrent filesystem changes are not certified. Only stored locations are reviewed; the command does not find replacements or remove entries. No new core or controller behavior is introduced.
+
+Version 1.4.0 validation covers Windows CI, strict types, dependency audit and CodeQL, plus read-only location-review regressions. The tagged Windows build verifies packaged startup, generated-cartridge runtime targets and archive layout. Interactive location-review acceptance in the packaged Windows app, physical controllers and user-owned games remain unverified.
