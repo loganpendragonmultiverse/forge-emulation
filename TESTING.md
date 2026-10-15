@@ -50,3 +50,8 @@ Add a save-state browser with thumbnails and compatibility warnings, plus guided
 Browse nine save slots with capture timestamps, core versions and available thumbnails; select the next launch slot without changing game files. State loading rejects a different core version. Controller mapping walks through gameplay and library controls, waits for held controls to be released, and shows live inputs. Versioned profile import validates actions, binding types and limits before previewing replacement counts; export refuses existing files. Core binaries and pins remain unchanged. Automated tests use generated fixtures; physical-controller and user-owned-cartridge acceptance is required before the stable Windows release.
 
 Candidate validation: 53 automated tests passed at 92.03% coverage; packaged frontend and all nine generated-ROM runtime targets passed; ZIP layout and SHA-256 verified. Physical-controller and user-owned-game acceptance is pending.
+
+
+## Location-review acceptance
+
+Test existing/missing/outside paths, unavailable and interrupted folder scans, unreadable children, archive-member uncertainty, stable output and unchanged database/ROM data. Verify the review dialog and background scan in the Windows package. No hardware/runtime behavior changes are intended; existing runtime release gates remain required.

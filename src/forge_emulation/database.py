@@ -6,6 +6,7 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .location_review import LocationRecord
 from .models import Game, GameCandidate
 
 SCHEMA = """
@@ -180,6 +181,23 @@ class LibraryDatabase:
                 (game_id,),
             ).fetchone()
         return self._to_game(row) if row else None
+
+    def location_records(self) -> list[LocationRecord]:
+        """Read all stored locations without changing available/last_seen or game data."""
+        with closing(
+            sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as connection:
+            rows = connection.execute(
+                "SELECT r.game_id, COALESCE(g.custom_title, g.title), r.path, "
+                "NULLIF(r.archive_member, '') FROM roms r JOIN games g ON g.id = r.game_id "
+                "ORDER BY r.path, r.archive_member, r.game_id"
+            ).fetchall()
+        return [
+            LocationRecord(
+                str(row[0]), str(row[1]), Path(str(row[2])), str(row[3]) if row[3] else None
+            )
+            for row in rows
+        ]
 
     def set_favorite(self, game_id: str, favorite: bool) -> None:
         with self.connect() as connection:
