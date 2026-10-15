@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0 - Unreleased
+## 1.4.0 - 2026-10-15
 
 - Add a selected-folder, read-only preview of stored ROM locations with missing candidates and unavailable/incomplete-folder safeguards.
 - Preserve all availability flags, metadata, play history, saves and core pins; ZIP member contents remain unverified.

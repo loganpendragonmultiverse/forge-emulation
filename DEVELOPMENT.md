@@ -1,6 +1,6 @@
 # Development contract
 
-ForgeEmulation 1.2 is a finite Windows release, not an emulator framework. Changes must preserve the local-first linked-library model, isolated runtime process, fixed core manifest, and absence of telemetry or ROM acquisition.
+ForgeEmulation 1.4.0 is a finite Windows release, not an emulator framework. Changes must preserve the local-first linked-library model, isolated runtime process, fixed core manifest, and absence of telemetry or ROM acquisition.
 
 Every change requires focused tests and must keep Ruff, strict MyPy, pytest, core integration, and packaging checks green. A change to a core binary requires a new binary hash, verified source commit, corresponding source archive, license review, and all-system runtime verification.
 
@@ -21,6 +21,8 @@ Browse nine save slots with capture timestamps, core versions and available thum
 Candidate validation: 53 automated tests passed at 92.03% coverage; packaged frontend and all nine generated-ROM runtime targets passed; ZIP layout and SHA-256 verified. Physical-controller and user-owned-game acceptance is pending.
 
 
-## 1.4.0 location-review candidate
+## 1.4.0 location review
 
 Preview only: do not update roms.available, last_seen, history or saves. A complete readable selected-folder scan is required before absence becomes a missing candidate; offline/incomplete roots remain unverified. Content and ZIP members are not read. Require independent review, Windows CI and packaged UI acceptance before publication.
+
+Independent technical review found no actionable findings. Preserve the tagged Windows build gates for startup, generated-cartridge runtimes and archive layout; report interactive packaged location-review and physical-device acceptance as unverified until exercised.
