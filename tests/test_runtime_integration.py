@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -91,12 +95,34 @@ def test_suspend_resume_and_rewind_with_pinned_cores(
         "suspend_on_exit": True,
         "resume_on_launch": True,
     }
-    first = RuntimeSession(config)
-    assert first.run()["exit_reason"] == "normal"
-    assert len(first.rewind.points) >= 2
+    # Match the product boundary: one native core per fresh runtime process.
+    probe = """
+import json, sys
+from forge_emulation.runtime import RuntimeSession
+session = RuntimeSession(json.loads(sys.argv[1]))
+result = session.run()
+result["rewind_points"] = len(session.rewind.points)
+result["can_undo_load"] = session.session_states.undo is not None
+print("PROBE:" + json.dumps(result))
+"""
+
+    def run_probe():
+        child = subprocess.run(
+            [sys.executable, "-c", probe, json.dumps(config)],
+            env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT / "src")},
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        return json.loads(
+            next(line[6:] for line in child.stdout.splitlines() if line.startswith("PROBE:"))
+        )
+
+    first = run_probe()
+    assert first["exit_reason"] == "normal" and first["rewind_points"] >= 2
     suspend = tmp_path / "states" / "suspend.state"
     assert suspend.is_file()
     assert not (suspend.parent / "slot-1.state").exists()
-    second = RuntimeSession(config)
-    assert second.run()["exit_reason"] == "normal"
-    assert second.session_states.undo is not None
+    second = run_probe()
+    assert second["exit_reason"] == "normal" and second["can_undo_load"]
