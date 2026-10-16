@@ -51,7 +51,42 @@ and 10,000 characters per note. This is manual local exchange, not synchronizati
 
 Organization is stored in the existing library SQLite database and included in normal backups.
 Removing a collection removes memberships while keeping every game and its other metadata.
-No additional emulator systems, netplay, rewind, achievements or online scraping are claimed.
+No additional emulator systems, netplay, achievements or online scraping are claimed.
+
+## Play sessions and library workbench (1.6.0)
+
+![Bulk library workbench with generated games](docs/screenshots/workbench.png)
+
+Open **Settings** to opt into 10, 30 or 60 seconds of rewind, 2×/4× fast-forward,
+separate suspend-on-exit/resume-on-launch snapshots, and pause on focus loss.
+Rewind captures every six emulated frames with a 64 MiB memory cap; the available history
+can be shorter for large states. Hold **Backspace** to rewind or **Left Shift** to fast-forward.
+Accelerated playback is silent. Pause with Space, then press **.** to step one frame.
+The quick menu also exposes playback options and frame step.
+
+**F6** saves a separate suspend snapshot, **F7** resumes it, and **F9** undoes the last
+successful state load. Manual slots 1–9 remain separate. New snapshots include a SHA-256
+checksum and still require matching game identity, core and core version. Existing states
+without a checksum remain readable. Undo exists for the current runtime process only.
+Unsupported serialization disables rewind rather than silently creating unusable history.
+
+**Library workbench** opens every game in the current filtered view in a table. Use Ctrl/Shift
+or **Select all**, then apply status, rating, favorites, added tags or collection membership
+to the selected games. Existing notes, tags and memberships remain intact. CSV export uses
+selected rows, or the current view when none are selected; paths are excluded and private notes
+are opt-in. Saved views retain search, system, favorites/recent, organization filters and sorting.
+The card grid shows 60 games per page; the workbench and CSV use the complete filtered view.
+
+**Details → States & screenshots** previews compatible state metadata and local images,
+exports a selected file without overwriting a destination, and moves unwanted media into
+`userdata/backups/removed-media`. A state thumbnail moves with its state. Restore a removed
+file by copying it back to the same game folder while the game is closed.
+
+**Find moved game files** scans a selected folder in the background and previews content matches
+for existing games. Applying the plan rechecks every file or ZIP member and the library revision
+before adding verified locations in one transaction. It preserves earlier locations, favorites,
+organization, history and saves. Changed content or an incomplete scan prevents the whole apply.
+This operation links existing files; it never moves or edits a cartridge.
 
 ## Quick start
 
@@ -79,6 +114,11 @@ ForgeEmulation links to the selected files. It does not rename, move, modify, up
 | Pause | Space |
 | Save state | F5 |
 | Load state | F8 |
+| Save / resume suspend snapshot | F6 / F7 |
+| Undo last successful state load | F9 |
+| Rewind (enable in settings) | Hold Backspace |
+| Fast-forward | Hold Left Shift |
+| Step a paused frame | . |
 | Screenshot | F12 |
 | Reset | Ctrl+R |
 | Fullscreen | Alt+Enter |

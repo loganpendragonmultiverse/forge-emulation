@@ -1,4 +1,4 @@
-ForgeEmulation 1.5.0 for Windows x64
+ForgeEmulation 1.6.0 for Windows x64
 ====================================
 
 START HERE: Double-click ForgeEmulation.exe.

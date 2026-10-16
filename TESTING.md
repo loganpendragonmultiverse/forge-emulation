@@ -72,3 +72,18 @@ certified by generated fixtures or offscreen tests and remain unverified until e
 Windows PR CI for the organization implementation passed 84 tests at 93.34% coverage,
 Ruff formatting/lint, strict mypy, dependency audit and CodeQL on October 16. The tagged
 Windows packaging gate remains authoritative for the shipped binaries.
+
+## 1.6.0 acceptance
+
+Backend tests cover bounded rewind eviction, snapshot identity/checksum/size validation,
+legacy states, load rollback and undo, settings persistence, bulk transactions, saved views,
+CSV privacy/formula neutralization, media recovery rollback, and revision/content-checked
+relinking. Offscreen Qt tests exercise the workbench, views, pagination and media manager.
+Pinned-core Windows tests and the packaged-runtime gate exercise separate suspend/resume
+for all nine generated-cartridge targets. Preserve the 85% coverage gate.
+
+Manual testing later: hold rewind after playing; compare 2×/4× fast-forward, step a paused
+frame, switch focus, save/resume suspend and undo a load; try a real controller and legal
+cartridges. Review large-library pagination, bulk edits and saved filters, media export and
+recovery, and moved raw/ZIP games. Synthetic automated sessions do not establish real-game
+compatibility, physical controller acceptance, timing/audio quality or interactive package QA.
