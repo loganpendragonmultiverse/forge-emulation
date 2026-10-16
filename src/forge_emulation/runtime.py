@@ -591,6 +591,12 @@ class RuntimeSession:
                 self.audio.open(round(av_info.timing.sample_rate))
             if self.resume_on_launch and (self.state_dir / "suspend.state").exists():
                 try:
+                    # Some cores finalize their hardware model on the first frame.
+                    # Initialize it before validating/loading a persisted snapshot.
+                    self.audio_suppressed = True
+                    self.core.run()
+                    self.audio.clear()
+                    self.audio_suppressed = False
                     self._resume()
                 except (OSError, ValueError, RuntimeError) as error:
                     self._show_message(f"Resume skipped: {error}")

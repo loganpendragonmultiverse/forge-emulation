@@ -103,6 +103,7 @@ session = RuntimeSession(json.loads(sys.argv[1]))
 result = session.run()
 result["rewind_points"] = len(session.rewind.points)
 result["can_undo_load"] = session.session_states.undo is not None
+result["message"] = session.message
 print("PROBE:" + json.dumps(result))
 """
 
@@ -125,4 +126,4 @@ print("PROBE:" + json.dumps(result))
     assert suspend.is_file()
     assert not (suspend.parent / "slot-1.state").exists()
     second = run_probe()
-    assert second["exit_reason"] == "normal" and second["can_undo_load"]
+    assert second["exit_reason"] == "normal" and second["can_undo_load"], second
