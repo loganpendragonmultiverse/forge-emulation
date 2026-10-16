@@ -1,4 +1,4 @@
-ForgeEmulation 1.4.0 for Windows x64
+ForgeEmulation 1.5.0 for Windows x64
 ====================================
 
 START HERE: Double-click ForgeEmulation.exe.
@@ -45,3 +45,8 @@ The mouse, keyboard, and controller operate the library interface. The mouse is
 not mapped to gameplay.
 
 No commercial games or firmware are included.
+
+Library organization: create groups in Collections & metadata, then open a game
+Details > Notes, status & collections to set progress, rating, tags and notes.
+Use the library filter rows to find a collection or unfinished game.
+Metadata exchange includes personal notes; review them before sharing an export.
