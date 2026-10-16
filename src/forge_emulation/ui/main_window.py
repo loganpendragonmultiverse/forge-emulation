@@ -49,12 +49,14 @@ from ..diagnostics import diagnostic_text
 from ..launch import GameLauncher, LaunchError
 from ..location_review import LocationRecord, LocationReview, preview_locations
 from ..models import Game, GameCandidate
+from ..organization import SORTS, STATUSES, Annotation, LibraryOrganizer
 from ..paths import AppPaths
 from ..profile_exchange import export_profiles, read_profiles
 from ..scanner import scan_paths
 from ..settings import RuntimeSettings, SettingsStore
 from ..state_browser import browse_states
 from ..systems import SYSTEM_BY_ID, SYSTEMS
+from .organization_dialogs import AnnotationDialog, CollectionsDialog, HistoryDialog
 
 APP_STYLE = """
 QMainWindow, QDialog, QMessageBox, QWidget#Root {
@@ -63,7 +65,7 @@ QMainWindow, QDialog, QMessageBox, QWidget#Root {
 }
 QWidget { font-family: "Segoe UI"; font-size: 14px; color: #f2f4f8; }
 QFrame#Sidebar { background: #0e1118; border-right: 1px solid #202632; }
-QLabel#Brand { font-size: 22px; font-weight: 700; color: #ffffff; }
+QLabel#Brand { font-size: 17px; font-weight: 700; color: #ffffff; }
 QLabel#BrandMark { background: #f05a47; border-radius: 9px; color: white; font-weight: 800; }
 QLabel#Eyebrow { color: #f47a67; font-size: 12px; font-weight: 700; }
 QLabel#Title { color: #ffffff; font-size: 32px; font-weight: 700; }
@@ -93,6 +95,8 @@ QPushButton#Favorite {
     text-align: center;
 }
 QPushButton#Favorite:checked { color: #f5c451; }
+QPlainTextEdit, QListWidget { background: #141821; color: #f2f4f8; border: 1px solid #343c4b; }
+QListWidget::item:selected { background: #3b465a; color: white; }
 QLineEdit {
     background: #141821;
     border: 1px solid #272e3a;
@@ -218,12 +222,21 @@ class GameDetailsDialog(QDialog):
         parent: QWidget | None = None,
         *,
         states: Any = None,
+        organize: Any = None,
+        history: Any = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"{game.display_title} — ForgeEmulation")
         self.setMinimumWidth(620)
         self.setStyleSheet(APP_STYLE)
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        self.resize(720, 700)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
         layout.setContentsMargins(28, 28, 28, 28)
         layout.setSpacing(16)
 
@@ -280,6 +293,16 @@ class GameDetailsDialog(QDialog):
         actions.addStretch()
         actions.addWidget(close_button)
         layout.addLayout(actions)
+        organization = QHBoxLayout()
+        for action_label, callback in [
+            ("Notes, status & collections", organize),
+            ("Play history", history),
+        ]:
+            button = QPushButton(action_label)
+            button.setObjectName("Secondary")
+            button.clicked.connect(lambda _checked=False, cb=callback: cb(game) if cb else None)
+            organization.addWidget(button)
+        layout.addLayout(organization)
 
     def _edit_and_close(self, edit: Any, game: Game) -> None:
         edit(game)
@@ -713,6 +736,7 @@ class GameCard(QFrame):
         play: Any,
         favorite: Any,
         details: Any,
+        annotation: Annotation | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -790,6 +814,20 @@ class GameCard(QFrame):
         meta = QLabel(activity)
         meta.setObjectName("Muted")
         layout.addWidget(meta)
+        annotation = annotation or Annotation()
+        progress = QLabel(
+            annotation.status + (" · " + "★" * annotation.rating if annotation.rating else "")
+        )
+        progress.setObjectName("Muted")
+        progress.setWordWrap(True)
+        layout.addWidget(progress)
+        if annotation.tags:
+            tags = QLabel(", ".join(annotation.tags))
+            tags.setObjectName("Muted")
+            tags.setWordWrap(True)
+            tags.setMaximumHeight(42)
+            tags.setToolTip(", ".join(annotation.tags))
+            layout.addWidget(tags)
 
         actions = QHBoxLayout()
         play_button = QPushButton("Play")
@@ -809,6 +847,7 @@ class MainWindow(QMainWindow):
     def __init__(self, database: LibraryDatabase, paths: AppPaths):
         super().__init__()
         self.database = database
+        self.organizer = LibraryOrganizer(database)
         self.paths = paths
         self.launcher = GameLauncher(paths)
         self.thread_pool = QThreadPool.globalInstance()
@@ -887,6 +926,14 @@ class MainWindow(QMainWindow):
         nav_layout.addWidget(self.all_button)
         nav_layout.addWidget(self.recent_button)
         nav_layout.addWidget(self.favorite_button)
+        for label, callback in [
+            ("Collections && metadata", self.manage_collections),
+            ("Play history", self.show_history),
+        ]:
+            button = QPushButton(label)
+            button.setObjectName("Secondary")
+            button.clicked.connect(callback)
+            nav_layout.addWidget(button)
         nav_layout.addSpacing(14)
 
         systems_label = QLabel("SYSTEMS")
@@ -970,6 +1017,49 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.fullscreen)
         header.addWidget(self.header_controls)
         content_layout.addLayout(header)
+
+        self.organization_controls = QWidget()
+        filter_layout = QVBoxLayout(self.organization_controls)
+        filter_layout.setContentsMargins(0, 0, 0, 0)
+        row = QHBoxLayout()
+        self.collection_filter = QComboBox()
+        self.collection_filter.addItem("All collections", "")
+        self.status_filter = QComboBox()
+        self.status_filter.addItem("All play statuses", "")
+        for value in STATUSES:
+            self.status_filter.addItem(value, value)
+        self.sort_order = QComboBox()
+        self.sort_order.addItems(SORTS)
+        for label, widget in [
+            ("Collection", self.collection_filter),
+            ("Play status", self.status_filter),
+            ("Sort", self.sort_order),
+        ]:
+            widget.setAccessibleName(label)
+            row.addWidget(widget)
+            widget.currentIndexChanged.connect(self.refresh)
+        filter_layout.addLayout(row)
+        row = QHBoxLayout()
+        self.tag_filter = QLineEdit()
+        self.tag_filter.setPlaceholderText("Filter by exact tag")
+        self.tag_filter.setAccessibleName("Tag filter")
+        self.tag_filter.textChanged.connect(self.refresh)
+        self.rating_filter = QComboBox()
+        self.rating_filter.addItem("Any rating", 0)
+        for rating in range(1, 6):
+            self.rating_filter.addItem(f"{rating}+ stars", rating)
+        self.rating_filter.currentIndexChanged.connect(self.refresh)
+        self.unplayed_filter = QCheckBox("Never launched")
+        self.unplayed_filter.toggled.connect(self.refresh)
+        clear = QPushButton("Clear filters")
+        clear.clicked.connect(self.clear_organization_filters)
+        row.addWidget(self.tag_filter, 1)
+        row.addWidget(self.rating_filter)
+        row.addWidget(self.unplayed_filter)
+        row.addWidget(clear)
+        filter_layout.addLayout(row)
+        content_layout.addWidget(self.organization_controls)
+        self.reload_collections()
 
         self.system_info_card = QFrame()
         self.system_info_card.setObjectName("SystemInfo")
@@ -1139,6 +1229,29 @@ class MainWindow(QMainWindow):
                     ),
                     ("Per-game settings", "Open Details → Game settings to create an override."),
                     ("Metadata", "Open Details → Edit title & artwork. Files remain local."),
+                    (
+                        "Organization",
+                        "Details → Notes, status & collections sets progress, "
+                        "rating, tags and notes.",
+                    ),
+                    (
+                        "Collections",
+                        "Collections & metadata creates, renames and removes named groups.",
+                    ),
+                    (
+                        "Find games",
+                        "Combine collection, status, tag, rating and Never launched "
+                        "filters; choose a sort order.",
+                    ),
+                    (
+                        "History",
+                        "Play history lists recent sessions with duration and exit reason.",
+                    ),
+                    (
+                        "Exchange",
+                        "Collections & metadata exports local organization or previews "
+                        "a content-matched import.",
+                    ),
                     (
                         "Backup & restore",
                         "Includes library data, saves, states, screenshots, artwork, "
@@ -1436,6 +1549,8 @@ class MainWindow(QMainWindow):
                 try:
                     restore_backup(self.paths, Path(selected))
                     self.database = LibraryDatabase(self.paths.database)
+                    self.organizer = LibraryOrganizer(self.database)
+                    self.reload_collections()
                     self.launcher = GameLauncher(self.paths)
                     self.settings_store = SettingsStore(self.paths.preferences)
                     self.controller_store = ControllerProfileStore.load(
@@ -1498,7 +1613,9 @@ class MainWindow(QMainWindow):
             self.section_widget.hide()
             self.game_scroll.hide()
             self.documentation_scroll.show()
+            self.organization_controls.hide()
             return
+        self.organization_controls.show()
         self.header_controls.show()
         self.metrics_widget.show()
         self.section_widget.show()
@@ -1513,16 +1630,27 @@ class MainWindow(QMainWindow):
                 favorites_only=self.favorites_only,
             )
         )
+        games = self.organizer.select(
+            games,
+            status=str(self.status_filter.currentData() or ""),
+            collection=str(self.collection_filter.currentData() or ""),
+            tag=self.tag_filter.text().strip(),
+            minimum_rating=int(self.rating_filter.currentData() or 0),
+            unplayed=self.unplayed_filter.isChecked(),
+            sort=self.sort_order.currentText(),
+        )
         self._clear_layout(self.grid)
         width = max(720, self.game_scroll.viewport().width(), self.width() - 322)
         columns = max(2, min(4, width // 285))
         self._grid_columns = columns
+        annotations = self.organizer.all_annotations()
         for index, game in enumerate(games):
             card = GameCard(
                 game,
                 play=self.play_game,
                 favorite=self.toggle_favorite,
                 details=self.show_details,
+                annotation=annotations.get(game.id, Annotation()),
             )
             self.grid.addWidget(card, index // columns, index % columns)
         if not games:
@@ -1531,7 +1659,11 @@ class MainWindow(QMainWindow):
             empty.setMinimumHeight(210)
             empty_layout = QVBoxLayout(empty)
             empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            title = QLabel("Your library is ready for its first game")
+            title = QLabel(
+                "No games match this view"
+                if self.database.list_games()
+                else "Your library is ready for its first game"
+            )
             title.setObjectName("CardTitle")
             body = QLabel(
                 "Choose Add game folder or drop a folder here.\n"
@@ -1602,6 +1734,7 @@ class MainWindow(QMainWindow):
             widget = item.widget()
             child_layout = item.layout()
             if widget:
+                widget.hide()
                 widget.deleteLater()
             elif child_layout:
                 MainWindow._clear_layout(child_layout)
@@ -1711,9 +1844,56 @@ class MainWindow(QMainWindow):
         layout.addWidget(scroll)
         dialog.exec()
 
+    def reload_collections(self) -> None:
+        selected = self.collection_filter.currentData()
+        self.collection_filter.blockSignals(True)
+        self.collection_filter.clear()
+        self.collection_filter.addItem("All collections", "")
+        for name in self.organizer.collections():
+            self.collection_filter.addItem(name, name)
+        self.collection_filter.setCurrentIndex(max(0, self.collection_filter.findData(selected)))
+        self.collection_filter.blockSignals(False)
+
+    def manage_collections(self) -> None:
+        CollectionsDialog(self.organizer, self).exec()
+        self.reload_collections()
+        self.refresh()
+
+    def organize_game(self, game: Game) -> None:
+        AnnotationDialog(self.organizer, game, self).exec()
+        self.refresh()
+
+    def show_history(self, game: Game | None = None) -> None:
+        # Qt clicked(bool) must not be mistaken for a game.
+        HistoryDialog(self.organizer, game if isinstance(game, Game) else None, self).exec()
+
+    def clear_organization_filters(self) -> None:
+        for widget in (
+            self.collection_filter,
+            self.status_filter,
+            self.sort_order,
+            self.rating_filter,
+        ):
+            widget.blockSignals(True)
+            widget.setCurrentIndex(0)
+            widget.blockSignals(False)
+        self.tag_filter.blockSignals(True)
+        self.tag_filter.clear()
+        self.tag_filter.blockSignals(False)
+        self.unplayed_filter.blockSignals(True)
+        self.unplayed_filter.setChecked(False)
+        self.unplayed_filter.blockSignals(False)
+        self.refresh()
+
     def show_details(self, game: Game) -> None:
         GameDetailsDialog(
-            game, self.edit_metadata, self.open_display_settings, self, states=self.show_states
+            game,
+            self.edit_metadata,
+            self.open_display_settings,
+            self,
+            states=self.show_states,
+            organize=self.organize_game,
+            history=self.show_history,
         ).exec()
 
     def play_game(self, game: Game) -> None:

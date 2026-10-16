@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.0 — 2026-10-16
+
+- Add named collections with rename/removal and multi-collection membership without copying games.
+- Add local play status, five-star ratings, notes and normalized tags, with status/rating badges on cards.
+- Combine collection, status, exact-tag, minimum-rating and never-launched filters with five stable sort orders.
+- Add read-only global and per-game session history with timestamps, duration, core and exit reason.
+- Add bounded JSON organization export/import matched to existing game content, with preview counts,
+  validation before writes, transactional replacement and a recovery export before UI imports.
+- Keep organization in the existing SQLite backup; preserve ROM locations, favorites, history,
+  title/artwork overrides, saves and core pins. Make game details scroll at smaller window sizes.
+- Physical-controller and user-owned-game acceptance remain unverified. Runtime behavior and cores
+  are unchanged; automated Qt acceptance covers the new organization flow.
+
 ## 1.4.0 - 2026-10-15
 
 - Add a selected-folder, read-only preview of stored ROM locations with missing candidates and unavailable/incomplete-folder safeguards.
