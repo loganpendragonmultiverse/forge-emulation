@@ -126,4 +126,6 @@ print("PROBE:" + json.dumps(result))
     assert suspend.is_file()
     assert not (suspend.parent / "slot-1.state").exists()
     second = run_probe()
-    assert second["exit_reason"] == "normal" and second["can_undo_load"], second
+    assert (
+        second["exit_reason"] == "normal" and second["can_undo_load"] and second["resumed_suspend"]
+    ), second

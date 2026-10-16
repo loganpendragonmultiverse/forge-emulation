@@ -581,6 +581,7 @@ class RuntimeSession:
         font = pygame.font.SysFont("Segoe UI", 18)
         clock = pygame.time.Clock()
         current_surface: pygame.Surface | None = None
+        resumed_suspend = False
         try:
             self.core.initialize()
             av_info = self.core.load_game(self.content_path)
@@ -598,6 +599,7 @@ class RuntimeSession:
                     self.audio.clear()
                     self.audio_suppressed = False
                     self._resume()
+                    resumed_suspend = True
                 except (OSError, ValueError, RuntimeError) as error:
                     self._show_message(f"Resume skipped: {error}")
             target_fps = max(1.0, float(av_info.timing.fps))
@@ -695,6 +697,7 @@ class RuntimeSession:
             "core_name": core_name,
             "core_version": core_version,
             "exit_reason": exit_reason,
+            "resumed_suspend": resumed_suspend,
             "state_slot": self.state_slot,
             "runtime_settings": {
                 "fullscreen": self.fullscreen,

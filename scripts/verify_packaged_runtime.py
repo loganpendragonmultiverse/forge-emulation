@@ -137,7 +137,11 @@ def verify_runtime(package: Path, manifest: dict[str, Any]) -> None:
                 timeout=45,
             )
             resumed = json.loads(result_path.read_text(encoding="utf-8"))
-            if completed.returncode or resumed.get("exit_reason") != "normal":
+            if (
+                completed.returncode
+                or resumed.get("exit_reason") != "normal"
+                or not resumed.get("resumed_suspend")
+            ):
                 raise RuntimeError(f"Packaged {system_id} resume failed: {resumed}")
 
         frontend_environment = os.environ.copy()
