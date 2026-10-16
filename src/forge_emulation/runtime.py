@@ -24,6 +24,7 @@ from .libretro import (
     RETRO_PIXEL_FORMAT_XRGB8888,
     LibretroCore,
 )
+from .playback import RewindBuffer, RewindPoint, SessionStates
 
 STATE_MAGIC = b"FORGESTATE1\n"
 
@@ -88,6 +89,11 @@ class AudioSink:
                 self._chunks.popleft()
         target[:] = output
 
+    def clear(self) -> None:
+        with self._lock:
+            self._chunks.clear()
+            self._offset = 0
+
     def close(self) -> None:
         if self.device:
             self.device.close()
@@ -121,6 +127,19 @@ class RuntimeSession:
         self.input_mask = 0
         self.running = True
         self.paused = False
+        self.step_pending = False
+        self.audio_suppressed = False
+        self.fast_forward_speed = int(config.get("fast_forward_speed", 2))
+        if self.fast_forward_speed not in {2, 4}:
+            self.fast_forward_speed = 2
+        seconds = int(config.get("rewind_seconds", 0))
+        self.rewind_seconds = seconds if seconds in {0, 10, 30, 60} else 0
+        self.rewind = RewindBuffer(self.rewind_seconds * 10)
+        self.suspend_on_exit = bool(config.get("suspend_on_exit", False))
+        self.resume_on_launch = bool(config.get("resume_on_launch", False))
+        self.pause_on_focus_loss = bool(config.get("pause_on_focus_loss", True))
+        self._playback_frames = 0
+        self._previous_mode = "normal"
         self.message = ""
         self.message_until = 0.0
         self.audio = AudioSink(self.volume, self.muted)
@@ -131,6 +150,7 @@ class RuntimeSession:
         profiles = config.get("controller_profiles", {})
         self.controller_profiles = profiles if isinstance(profiles, dict) else {}
         self.core = LibretroCore(self.core_path, self.system_dir, self.save_path.parent)
+        self.session_states = SessionStates(self.state_dir, self.game_id, self.core)
         self.core.configure_callbacks(
             video=self._video,
             audio_sample=self._audio_sample,
@@ -148,10 +168,12 @@ class RuntimeSession:
         self.frame_pitch = pitch
 
     def _audio_sample(self, left: int, right: int) -> None:
-        self.audio.push(struct.pack("<hh", left, right))
+        if not self.audio_suppressed:
+            self.audio.push(struct.pack("<hh", left, right))
 
     def _audio_batch(self, data: Any, frames: int) -> int:
-        self.audio.push(ctypes.string_at(data, frames * 4))
+        if not self.audio_suppressed:
+            self.audio.push(ctypes.string_at(data, frames * 4))
         return frames
 
     def _input_poll(self) -> None:
@@ -269,18 +291,7 @@ class RuntimeSession:
         return self.state_dir / f"slot-{self.state_slot}.state"
 
     def _save_state(self) -> None:
-        metadata = {
-            "game_id": self.game_id,
-            "core": self.core.name,
-            "core_version": self.core.version,
-            "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        }
-        header = json.dumps(metadata, sort_keys=True).encode()
-        state = self.core.serialize()
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.state_path.with_suffix(self.state_path.suffix + ".partial")
-        temporary.write_bytes(STATE_MAGIC + struct.pack("<I", len(header)) + header + state)
-        temporary.replace(self.state_path)
+        self.session_states.save(self.state_path, datetime.now(UTC).isoformat(timespec="seconds"))
         surface = self._surface_from_frame()
         thumbnail = self.state_path.with_suffix(".png")
         if surface is not None:
@@ -295,23 +306,59 @@ class RuntimeSession:
         self._show_message(f"State saved to slot {self.state_slot}")
 
     def _load_state(self) -> None:
-        data = self.state_path.read_bytes()
-        if not data.startswith(STATE_MAGIC):
-            raise RuntimeError("This is not a ForgeEmulation save state.")
-        header_length = struct.unpack("<I", data[len(STATE_MAGIC) : len(STATE_MAGIC) + 4])[0]
-        header_start = len(STATE_MAGIC) + 4
-        metadata = json.loads(data[header_start : header_start + header_length])
-        if metadata.get("game_id") != self.game_id:
-            raise RuntimeError("This state belongs to a different game.")
-        if metadata.get("core") != self.core.name:
-            raise RuntimeError("This state was created by a different emulator core.")
-        if metadata.get("core_version") != self.core.version:
-            raise RuntimeError(
-                "State core version differs. Use the matching core version; "
-                "this state was not loaded."
-            )
-        self.core.unserialize(data[header_start + header_length :])
-        self._show_message(f"State loaded from slot {self.state_slot}")
+        self.session_states.load(self.state_path)
+        self.rewind.clear()
+        self.audio.clear()
+        self._show_message(f"State loaded from slot {self.state_slot}; F9 undoes the load")
+
+    def _undo_load(self) -> None:
+        self.session_states.undo_load()
+        self.rewind.clear()
+        self.audio.clear()
+        self._show_message("State load undone")
+
+    def _suspend(self) -> None:
+        self.session_states.save(
+            self.state_dir / "suspend.state", datetime.now(UTC).isoformat(timespec="seconds")
+        )
+        self._show_message("Suspend snapshot saved separately from manual slots")
+
+    def _resume(self) -> None:
+        self.session_states.load(self.state_dir / "suspend.state")
+        self.rewind.clear()
+        self.audio.clear()
+        self._show_message("Suspend snapshot resumed; F9 undoes the load")
+
+    def _run_frame(self) -> None:
+        self.core.run()
+        self._playback_frames += 1
+        if self.rewind_seconds and self._playback_frames % 6 == 0:
+            try:
+                accepted = self.rewind.push(
+                    RewindPoint(
+                        self.core.serialize(),
+                        self.frame,
+                        self.frame_width,
+                        self.frame_height,
+                        self.frame_pitch,
+                    )
+                )
+                if not accepted:
+                    self.rewind_seconds = 0
+                    self._show_message("Rewind disabled: a snapshot exceeds the memory budget")
+            except RuntimeError:
+                self.rewind_seconds = 0
+                self.rewind.clear()
+                self._show_message("This core cannot capture rewind snapshots")
+
+    def _rewind_frame(self) -> bool:
+        point = self.rewind.pop()
+        if point is None:
+            return False
+        self.core.unserialize(point.state)
+        self.frame, self.frame_width = point.frame, point.width
+        self.frame_height, self.frame_pitch = point.height, point.pitch
+        return True
 
     @staticmethod
     def scaled_size(source: tuple[int, int], target: tuple[int, int], mode: str) -> tuple[int, int]:
@@ -337,6 +384,12 @@ class RuntimeSession:
             f"Volume — {'Muted' if self.muted else str(self.volume) + '%'}",
             "Toggle fullscreen",
             "Exit game",
+            "Save suspend snapshot",
+            "Resume suspend snapshot",
+            "Undo last state load",
+            f"Rewind history — {self.rewind_seconds}s (64 MiB cap)",
+            f"Fast-forward speed — {self.fast_forward_speed}x",
+            "Step one frame (pauses)",
         ]
 
     def _adjust_menu(self, delta: int) -> None:
@@ -365,6 +418,8 @@ class RuntimeSession:
             self._save_screenshot(current_surface)
         elif self.menu_index == 5:
             self.core.reset()
+            self.rewind.clear()
+            self.audio.clear()
             self._show_message("Game reset")
         elif self.menu_index in {6, 7}:
             self._adjust_menu(1)
@@ -375,6 +430,22 @@ class RuntimeSession:
             self._toggle_fullscreen()
         elif self.menu_index == 10:
             self.running = False
+        elif self.menu_index == 11:
+            self._suspend()
+        elif self.menu_index == 12:
+            self._resume()
+        elif self.menu_index == 13:
+            self._undo_load()
+        elif self.menu_index == 14:
+            values = [0, 10, 30, 60]
+            self.rewind_seconds = values[(values.index(self.rewind_seconds) + 1) % len(values)]
+            self.rewind = RewindBuffer(self.rewind_seconds * 10)
+        elif self.menu_index == 15:
+            self.fast_forward_speed = 4 if self.fast_forward_speed == 2 else 2
+        elif self.menu_index == 16:
+            self.paused = True
+            self.menu_open = False
+            self.step_pending = True
 
     def _toggle_fullscreen(self) -> None:
         self.fullscreen = not self.fullscreen
@@ -388,14 +459,19 @@ class RuntimeSession:
         screen.blit(overlay, (0, 0))
         items = self._menu_items()
         width = min(560, screen.get_width() - 40)
-        panel = pygame.Rect(0, 0, width, min(screen.get_height() - 40, 96 + len(items) * 38))
+        visible_rows = max(1, min(len(items), (screen.get_height() - 136) // 38))
+        first = max(0, min(self.menu_index - visible_rows // 2, len(items) - visible_rows))
+        panel = pygame.Rect(0, 0, width, 96 + visible_rows * 38)
         panel.center = screen.get_rect().center
         pygame.draw.rect(screen, (20, 24, 33), panel, border_radius=14)
         pygame.draw.rect(screen, (59, 68, 84), panel, 1, border_radius=14)
         heading = font.render("FORGE QUICK MENU", True, (244, 122, 103))
         screen.blit(heading, (panel.x + 24, panel.y + 20))
-        for index, label in enumerate(items):
-            row = pygame.Rect(panel.x + 16, panel.y + 58 + index * 38, panel.width - 32, 34)
+        for index in range(first, first + visible_rows):
+            label = items[index]
+            row = pygame.Rect(
+                panel.x + 16, panel.y + 58 + (index - first) * 38, panel.width - 32, 34
+            )
             if index == self.menu_index:
                 pygame.draw.rect(screen, (45, 53, 68), row, border_radius=7)
             text = font.render(
@@ -412,6 +488,14 @@ class RuntimeSession:
 
     def _handle_events(self, current_surface: pygame.Surface | None) -> None:
         for event in pygame.event.get():
+            if (
+                event.type == pygame.WINDOWFOCUSLOST
+                and self.pause_on_focus_loss
+                and not self.max_frames
+            ):
+                self.paused = True
+                self.audio.clear()
+                self._show_message("Paused after focus loss; Space resumes")
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.JOYDEVICEADDED and self.joystick is None:
@@ -456,10 +540,21 @@ class RuntimeSession:
                         self._save_state()
                     elif event.key == pygame.K_F8:
                         self._load_state()
+                    elif event.key == pygame.K_F9:
+                        self._undo_load()
+                    elif event.key == pygame.K_F6:
+                        self._suspend()
+                    elif event.key == pygame.K_F7:
+                        self._resume()
+                    elif event.key == pygame.K_PERIOD:
+                        self.paused = True
+                        self.step_pending = True
                     elif event.key == pygame.K_F12 and current_surface:
                         self._save_screenshot(current_surface)
                     elif event.key == pygame.K_r and event.mod & pygame.KMOD_CTRL:
                         self.core.reset()
+                        self.rewind.clear()
+                        self.audio.clear()
                         self._show_message("Game reset")
                     elif event.key == pygame.K_RETURN and event.mod & pygame.KMOD_ALT:
                         self._toggle_fullscreen()
@@ -494,7 +589,13 @@ class RuntimeSession:
             self.core.load_save_ram(self.save_path)
             if self.audio_enabled:
                 self.audio.open(round(av_info.timing.sample_rate))
+            if self.resume_on_launch and (self.state_dir / "suspend.state").exists():
+                try:
+                    self._resume()
+                except (OSError, ValueError, RuntimeError) as error:
+                    self._show_message(f"Resume skipped: {error}")
             target_fps = max(1.0, float(av_info.timing.fps))
+            self.rewind = RewindBuffer(round(self.rewind_seconds * target_fps / 6))
             completed_frames = 0
             while self.running and not self.core.shutdown_requested:
                 self._handle_events(current_surface)
@@ -507,9 +608,34 @@ class RuntimeSession:
                         self.menu_open = not self.menu_open
                         self.menu_index = 0
                     self._menu_controller_latch = bool(select_start)
-                if not self.paused and not self.menu_open:
-                    self.core.run()
-                    completed_frames += 1
+                keys = pygame.key.get_pressed()
+                rewinding = (
+                    bool(keys[pygame.K_BACKSPACE]) and not self.menu_open and not self.paused
+                )
+                fast = bool(keys[pygame.K_LSHIFT]) and not self.menu_open and not self.paused
+                mode = (
+                    "rewind"
+                    if rewinding
+                    else "fast"
+                    if fast
+                    else "paused"
+                    if (self.paused or self.menu_open)
+                    else "normal"
+                )
+                self.audio_suppressed = mode != "normal"
+                if mode != self._previous_mode:
+                    self.audio.clear()
+                    self._previous_mode = mode
+                if rewinding:
+                    self._rewind_frame()
+                    current_surface = self._surface_from_frame() or current_surface
+                elif not self.menu_open and (not self.paused or self.step_pending):
+                    for _ in range(self.fast_forward_speed if fast else 1):
+                        self._run_frame()
+                        completed_frames += 1
+                        if self.max_frames and completed_frames >= self.max_frames:
+                            break
+                    self.step_pending = False
                     current_surface = self._surface_from_frame() or current_surface
                 screen.fill((8, 10, 15))
                 if current_surface:
@@ -540,6 +666,11 @@ class RuntimeSession:
             logging.exception("Runtime session failed")
             raise
         finally:
+            if self.suspend_on_exit and exit_reason != "error" and core_name:
+                try:
+                    self._suspend()
+                except (OSError, ValueError, RuntimeError):
+                    logging.exception("Could not save suspend snapshot; manual slots are unchanged")
             try:
                 self.core.save_save_ram(self.save_path)
             except Exception:
@@ -565,6 +696,11 @@ class RuntimeSession:
                 "video_filter": self.video_filter,
                 "volume": self.volume,
                 "muted": self.muted,
+                "rewind_seconds": self.rewind_seconds,
+                "fast_forward_speed": self.fast_forward_speed,
+                "suspend_on_exit": self.suspend_on_exit,
+                "resume_on_launch": self.resume_on_launch,
+                "pause_on_focus_loss": self.pause_on_focus_loss,
             },
         }
 

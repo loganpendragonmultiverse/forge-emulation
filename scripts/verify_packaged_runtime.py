@@ -103,7 +103,10 @@ def verify_runtime(package: Path, manifest: dict[str, Any]) -> None:
                 "game_id": f"package-test:{system_id}",
                 "title": rom_filename,
                 "audio": system_id == "nes",
-                "max_frames": 4,
+                "max_frames": 18,
+                "rewind_seconds": 10,
+                "suspend_on_exit": True,
+                "resume_on_launch": True,
             }
             config_path = session / "launch.json"
             config_path.write_text(json.dumps(config), encoding="utf-8")
@@ -120,6 +123,22 @@ def verify_runtime(package: Path, manifest: dict[str, Any]) -> None:
             result = json.loads(result_path.read_text(encoding="utf-8"))
             if completed.returncode or result.get("exit_reason") != "normal":
                 raise RuntimeError(f"Packaged {system_id} runtime failed: {result}")
+            suspend = session / "states" / "suspend.state"
+            if not suspend.is_file():
+                raise RuntimeError(f"Packaged {system_id} did not save its suspend snapshot")
+            completed = subprocess.run(
+                [
+                    str(package / "_internal" / "ForgeEmulationRuntime.exe"),
+                    "--config",
+                    str(config_path),
+                ],
+                check=False,
+                env=environment,
+                timeout=45,
+            )
+            resumed = json.loads(result_path.read_text(encoding="utf-8"))
+            if completed.returncode or resumed.get("exit_reason") != "normal":
+                raise RuntimeError(f"Packaged {system_id} resume failed: {resumed}")
 
         frontend_environment = os.environ.copy()
         startup_probe = root / "frontend-startup.ready"

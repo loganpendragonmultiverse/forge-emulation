@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0 - 2026-10-16
+
+- Add bounded opt-in rewind, 2×/4× silent fast-forward, paused frame stepping and focus-loss pause.
+- Add separate suspend/resume snapshots, snapshot checksums and one-step undo for successful loads.
+- Add a table workbench with transactional bulk organization, private-notes opt-in CSV export and reusable saved views.
+- Paginate the card grid while keeping complete filtered views available to the workbench and export.
+- Add a state/screenshot manager with preview, checked exports and recoverable removal of states and thumbnails.
+- Add background content-verified moved-file relinking with revision checks, all-or-nothing apply and preserved history and saves.
+- Extend generated-cartridge Windows and packaged runtime checks to suspend/resume across all nine targets. Core pins and licenses are unchanged.
+
+
 ## 1.5.0 — 2026-10-16
 
 - Add named collections with rename/removal and multi-collection membership without copying games.

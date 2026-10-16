@@ -100,7 +100,13 @@ def test_runtime_thumbnail_and_version_guard(
     session.state_dir = tmp_path
     session.state_slot = 1
     session.game_id = "game"
+    from forge_emulation.playback import RewindBuffer, SessionStates
+    from forge_emulation.runtime import AudioSink
+
+    session.rewind = RewindBuffer(0)
+    session.audio = AudioSink()
     monkeypatch.setattr(session, "core", Core(), raising=False)
+    session.session_states = SessionStates(tmp_path, "game", session.core)
     surface = pygame.Surface((320, 240))
     surface.fill((20, 40, 60))
     monkeypatch.setattr(session, "_surface_from_frame", lambda: surface)
@@ -109,5 +115,5 @@ def test_runtime_thumbnail_and_version_guard(
     assert pygame.image.load(str(tmp_path / "slot-1.png")).get_size() == (240, 180)
     session._load_state()
     session.core.version = "2"
-    with pytest.raises(RuntimeError, match="version differs"):
+    with pytest.raises(ValueError, match="version differs"):
         session._load_state()

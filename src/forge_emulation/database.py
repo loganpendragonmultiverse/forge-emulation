@@ -159,7 +159,7 @@ class LibraryDatabase:
             JOIN roms r ON r.rowid = (
                 SELECT r2.rowid FROM roms r2
                 WHERE r2.game_id = g.id AND r2.available = 1
-                ORDER BY r2.last_seen DESC LIMIT 1
+                ORDER BY r2.last_seen DESC, r2.rowid DESC LIMIT 1
             )
             WHERE {where}
             ORDER BY COALESCE(g.last_played, '') DESC,
@@ -176,7 +176,7 @@ class LibraryDatabase:
                 SELECT g.*, r.path, NULLIF(r.archive_member, '') AS archive_member
                 FROM games g JOIN roms r ON r.game_id = g.id
                 WHERE g.id = ? AND r.available = 1
-                ORDER BY r.last_seen DESC LIMIT 1
+                ORDER BY r.last_seen DESC, r.rowid DESC LIMIT 1
                 """,
                 (game_id,),
             ).fetchone()
