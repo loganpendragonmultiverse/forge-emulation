@@ -68,3 +68,7 @@ combine filters, rename and remove a collection, export metadata, change a note,
 the match count, then use the recovery JSON to restore the prior note. Confirm favorites, ROM
 locations, saves and sessions survive. Physical controllers and user-owned cartridges cannot be
 certified by generated fixtures or offscreen tests and remain unverified until exercised.
+
+Windows PR CI for the organization implementation passed 84 tests at 93.34% coverage,
+Ruff formatting/lint, strict mypy, dependency audit and CodeQL on October 16. The tagged
+Windows packaging gate remains authoritative for the shipped binaries.

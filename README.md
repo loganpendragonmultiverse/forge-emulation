@@ -6,6 +6,9 @@ ForgeEmulation is a local-first Windows desktop library for legally obtained ret
 
 ## Features
 
+- Named collections, play status, ratings, notes and tags
+- Combined library filters, five sort orders and read-only session history
+- Content-matched local organization export/import with preview and recovery
 - Nintendo Entertainment System through Nestopia
 - Super Nintendo Entertainment System through bsnes
 - Game Boy and Game Boy Color through SameBoy
@@ -15,9 +18,6 @@ ForgeEmulation is a local-first Windows desktop library for legally obtained ret
 - Atari 2600 through Stella 2014
 - Recursive folder scanning and ZIP inspection
 - Search, system filters, favorites, Continue Playing, playtime, and session counts
-- Named collections, play status, ratings, notes and tags
-- Combined library filters, five sort orders and read-only session history
-- Content-matched local organization export/import with preview and recovery
 - Keyboard input plus persistent remapping and library navigation for SDL controllers
 - Native save RAM, nine save-state slots, screenshots, pause, reset, and fullscreen
 - Global and per-game display/audio settings, local backup/restore, diagnostics, titles, and artwork
