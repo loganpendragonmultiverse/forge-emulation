@@ -1,6 +1,6 @@
 # Development contract
 
-ForgeEmulation 1.4.0 is a finite Windows release, not an emulator framework. Changes must preserve the local-first linked-library model, isolated runtime process, fixed core manifest, and absence of telemetry or ROM acquisition.
+ForgeEmulation 1.5.0 is a finite Windows release, not an emulator framework. Changes must preserve the local-first linked-library model, isolated runtime process, fixed core manifest, and absence of telemetry or ROM acquisition.
 
 Every change requires focused tests and must keep Ruff, strict MyPy, pytest, core integration, and packaging checks green. A change to a core binary requires a new binary hash, verified source commit, corresponding source archive, license review, and all-system runtime verification.
 
@@ -26,3 +26,14 @@ Candidate validation: 53 automated tests passed at 92.03% coverage; packaged fro
 Preview only: do not update roms.available, last_seen, history or saves. A complete readable selected-folder scan is required before absence becomes a missing candidate; offline/incomplete roots remain unverified. Content and ZIP members are not read. Require independent review, Windows CI and packaged UI acceptance before publication.
 
 Independent technical review found no actionable findings. Preserve the tagged Windows build gates for startup, generated-cartridge runtimes and archive layout; report interactive packaged location-review and physical-device acceptance as unverified until exercised.
+
+## 1.5.0 organization release
+
+Add organization tables without rewriting games, ROMs or sessions. Keep all writes in explicit
+user actions and SQLite transactions. Organization exchange cannot create games or alter
+ROM locations, saves, favorites, core pins or play history. Preserve bounded validation and
+recovery export before import. The new UI receives offscreen Qt acceptance and rendered
+inspection; existing Windows integration and tagged packaging gates remain required.
+
+Design references: RetroArch playlist documentation and ES-DE USERGUIDE custom collections.
+This release adapts library concepts without copying their implementation or claiming parity.

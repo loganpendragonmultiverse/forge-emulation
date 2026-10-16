@@ -15,10 +15,43 @@ ForgeEmulation is a local-first Windows desktop library for legally obtained ret
 - Atari 2600 through Stella 2014
 - Recursive folder scanning and ZIP inspection
 - Search, system filters, favorites, Continue Playing, playtime, and session counts
+- Named collections, play status, ratings, notes and tags
+- Combined library filters, five sort orders and read-only session history
+- Content-matched local organization export/import with preview and recovery
 - Keyboard input plus persistent remapping and library navigation for SDL controllers
 - Native save RAM, nine save-state slots, screenshots, pause, reset, and fullscreen
 - Global and per-game display/audio settings, local backup/restore, diagnostics, titles, and artwork
 - No accounts, telemetry, metadata services, or ROM downloads
+
+## Library organization (1.5.0)
+
+![Library organization with original generated test games](docs/screenshots/organization.png)
+
+Create a collection from **Collections & metadata → New**. Open a game's **Details →
+Notes, status & collections**, choose its play status and rating, add comma-separated tags
+and notes, and select its collections. Cards show play status and rating. The library's
+two filter rows combine collection, status, exact tag, minimum rating and **Never launched**.
+Choose recent activity, title, playtime, added date or rating order; **Clear filters** resets
+these organization controls. System, favorites and search views still apply. Continue Playing
+starts with the 20 most recent games before applying organization filters.
+
+**Play history** lists the latest 200 recorded sessions across the library; the same action
+in Details limits history to that game. It shows recorded timestamps, duration, selected core
+and exit reason without changing playtime.
+
+**Collections & metadata → Export organization** writes a new JSON file. It includes notes,
+tags, ratings, play status, collection names and content identities. Review private notes before
+sharing. ROM paths, files, artwork, favorites, title overrides, saves and session history are
+excluded. Import previews matching/unknown counts, validates the whole file, skips unknown games
+and replaces organization only for matching content already in the library. Collection names
+merge. A recovery JSON is saved in userdata/backups before UI replacement; import that file to
+restore earlier organization for matching games. Export refuses to overwrite files. Exchange
+limits are 8 MiB / 20,000 entries, 50 tags or memberships per game, 80 characters per name,
+and 10,000 characters per note. This is manual local exchange, not synchronization.
+
+Organization is stored in the existing library SQLite database and included in normal backups.
+Removing a collection removes memberships while keeping every game and its other metadata.
+No additional emulator systems, netplay, rewind, achievements or online scraping are claimed.
 
 ## Quick start
 
@@ -87,7 +120,7 @@ See [BUILDING.md](BUILDING.md), [TESTING.md](TESTING.md), and [ARCHITECTURE.md](
 
 ## Project status
 
-Version 1.4.0 is a bounded Windows release. Bug reports and focused pull
+Version 1.5.0 is a Windows release. Bug reports and focused pull
 requests are welcome; broader feature work is considered only in a separately
 reviewed release.
 

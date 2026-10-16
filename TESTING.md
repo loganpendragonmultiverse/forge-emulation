@@ -55,3 +55,16 @@ Candidate validation: 53 automated tests passed at 92.03% coverage; packaged fro
 ## Location-review acceptance
 
 Test existing/missing/outside paths, unavailable and interrupted folder scans, unreadable children, archive-member uncertainty, stable output and unchanged database/ROM data. Verify the review dialog and background scan in the Windows package. No hardware/runtime behavior changes are intended; existing runtime release gates remain required.
+
+## 1.5.0 organization acceptance
+
+The organization tests cover additive reopening, collection rename/conflict/removal, annotation
+validation, combined filters, stable sorting, read-only bounded history, path-free exports,
+content-match imports, unknown-game skipping and transactional rollback. Offscreen Qt acceptance
+edits annotations, selects collection memberships, combines filters, clears them and opens history.
+
+For hands-on acceptance: create two collections, add a game to both, enter notes/tags/rating,
+combine filters, rename and remove a collection, export metadata, change a note, import and review
+the match count, then use the recovery JSON to restore the prior note. Confirm favorites, ROM
+locations, saves and sessions survive. Physical controllers and user-owned cartridges cannot be
+certified by generated fixtures or offscreen tests and remain unverified until exercised.
