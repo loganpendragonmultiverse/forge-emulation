@@ -57,6 +57,11 @@ class GameLauncher:
             "volume": settings.volume,
             "muted": settings.muted,
             "state_slot": settings.state_slot,
+            "rewind_seconds": settings.rewind_seconds,
+            "fast_forward_speed": settings.fast_forward_speed,
+            "suspend_on_exit": settings.suspend_on_exit,
+            "resume_on_launch": settings.resume_on_launch,
+            "pause_on_focus_loss": settings.pause_on_focus_loss,
             "controller_profiles": ControllerProfileStore.load(
                 self.paths.controller_profiles
             ).export_profiles(),

@@ -4,8 +4,11 @@ ForgeEmulation is a local-first Windows desktop library for legally obtained ret
 
 ![ForgeEmulation library with original synthetic test cartridges](docs/screenshots/library.png)
 
-## Public Version 1.2
+## Features
 
+- Named collections, play status, ratings, notes and tags
+- Combined library filters, five sort orders and read-only session history
+- Content-matched local organization export/import with preview and recovery
 - Nintendo Entertainment System through Nestopia
 - Super Nintendo Entertainment System through bsnes
 - Game Boy and Game Boy Color through SameBoy
@@ -19,6 +22,71 @@ ForgeEmulation is a local-first Windows desktop library for legally obtained ret
 - Native save RAM, nine save-state slots, screenshots, pause, reset, and fullscreen
 - Global and per-game display/audio settings, local backup/restore, diagnostics, titles, and artwork
 - No accounts, telemetry, metadata services, or ROM downloads
+
+## Library organization (1.5.0)
+
+![Library organization with original generated test games](docs/screenshots/organization.png)
+
+Create a collection from **Collections & metadata → New**. Open a game's **Details →
+Notes, status & collections**, choose its play status and rating, add comma-separated tags
+and notes, and select its collections. Cards show play status and rating. The library's
+two filter rows combine collection, status, exact tag, minimum rating and **Never launched**.
+Choose recent activity, title, playtime, added date or rating order; **Clear filters** resets
+these organization controls. System, favorites and search views still apply. Continue Playing
+starts with the 20 most recent games before applying organization filters.
+
+**Play history** lists the latest 200 recorded sessions across the library; the same action
+in Details limits history to that game. It shows recorded timestamps, duration, selected core
+and exit reason without changing playtime.
+
+**Collections & metadata → Export organization** writes a new JSON file. It includes notes,
+tags, ratings, play status, collection names and content identities. Review private notes before
+sharing. ROM paths, files, artwork, favorites, title overrides, saves and session history are
+excluded. Import previews matching/unknown counts, validates the whole file, skips unknown games
+and replaces organization only for matching content already in the library. Collection names
+merge. A recovery JSON is saved in userdata/backups before UI replacement; import that file to
+restore earlier organization for matching games. Export refuses to overwrite files. Exchange
+limits are 8 MiB / 20,000 entries, 50 tags or memberships per game, 80 characters per name,
+and 10,000 characters per note. This is manual local exchange, not synchronization.
+
+Organization is stored in the existing library SQLite database and included in normal backups.
+Removing a collection removes memberships while keeping every game and its other metadata.
+No additional emulator systems, netplay, achievements or online scraping are claimed.
+
+## Play sessions and library workbench (1.6.0)
+
+![Bulk library workbench with generated games](docs/screenshots/workbench.png)
+
+Open **Settings** to opt into 10, 30 or 60 seconds of rewind, 2×/4× fast-forward,
+separate suspend-on-exit/resume-on-launch snapshots, and pause on focus loss.
+Rewind captures every six emulated frames with a 64 MiB memory cap; the available history
+can be shorter for large states. Hold **Backspace** to rewind or **Left Shift** to fast-forward.
+Accelerated playback is silent. Pause with Space, then press **.** to step one frame.
+The quick menu also exposes playback options and frame step.
+
+**F6** saves a separate suspend snapshot, **F7** resumes it, and **F9** undoes the last
+successful state load. Manual slots 1–9 remain separate. New snapshots include a SHA-256
+checksum and still require matching game identity, core and core version. Existing states
+without a checksum remain readable. Undo exists for the current runtime process only.
+Unsupported serialization disables rewind rather than silently creating unusable history.
+
+**Library workbench** opens every game in the current filtered view in a table. Use Ctrl/Shift
+or **Select all**, then apply status, rating, favorites, added tags or collection membership
+to the selected games. Existing notes, tags and memberships remain intact. CSV export uses
+selected rows, or the current view when none are selected; paths are excluded and private notes
+are opt-in. Saved views retain search, system, favorites/recent, organization filters and sorting.
+The card grid shows 60 games per page; the workbench and CSV use the complete filtered view.
+
+**Details → States & screenshots** previews compatible state metadata and local images,
+exports a selected file without overwriting a destination, and moves unwanted media into
+`userdata/backups/removed-media`. A state thumbnail moves with its state. Restore a removed
+file by copying it back to the same game folder while the game is closed.
+
+**Find moved game files** scans a selected folder in the background and previews content matches
+for existing games. Applying the plan rechecks every file or ZIP member and the library revision
+before adding verified locations in one transaction. It preserves earlier locations, favorites,
+organization, history and saves. Changed content or an incomplete scan prevents the whole apply.
+This operation links existing files; it never moves or edits a cartridge.
 
 ## Quick start
 
@@ -46,6 +114,11 @@ ForgeEmulation links to the selected files. It does not rename, move, modify, up
 | Pause | Space |
 | Save state | F5 |
 | Load state | F8 |
+| Save / resume suspend snapshot | F6 / F7 |
+| Undo last successful state load | F9 |
+| Rewind (enable in settings) | Hold Backspace |
+| Fast-forward | Hold Left Shift |
+| Step a paused frame | . |
 | Screenshot | F12 |
 | Reset | Ctrl+R |
 | Fullscreen | Alt+Enter |
@@ -87,8 +160,23 @@ See [BUILDING.md](BUILDING.md), [TESTING.md](TESTING.md), and [ARCHITECTURE.md](
 
 ## Project status
 
-Version 1.2 is a complete, bounded Windows release. Bug reports and focused pull
+Version 1.5.0 is a Windows release. Bug reports and focused pull
 requests are welcome; broader feature work is considered only in a separately
 reviewed release.
 
 ForgeEmulation is part of the [Logan Pendragon Forge open-source collection](https://www.loganpendragonforge.com/open-source/).
+
+## Version 1.3.0: reviewed improvements
+
+Add a save-state browser with thumbnails and compatibility warnings, plus guided controller mapping, live input feedback and validated profile exchange.
+
+Browse nine save slots with capture timestamps, core versions and available thumbnails; select the next launch slot without changing game files. State loading rejects a different core version. Controller mapping walks through gameplay and library controls, waits for held controls to be released, and shows live inputs. Versioned profile import validates actions, binding types and limits before previewing replacement counts; export refuses existing files. Core binaries and pins remain unchanged. Automated tests use generated fixtures; physical-controller and user-owned-cartridge acceptance is required before the stable Windows release.
+
+Version 1.3 validation: 53 automated tests passed at 92.03% coverage; packaged frontend and all nine generated-ROM runtime targets passed; ZIP layout and SHA-256 verified. Physical-controller and user-owned-game acceptance is pending.
+
+
+## Location review (1.4.0)
+
+Choose **Review game locations**, then a readable game folder. The background scan compares stored location paths with that folder and displays file-present, container-present/member-unverified, missing-candidate, unverified and outside-folder results. It never opens ROM contents or changes library flags, metadata, history or saves. Missing/unreadable roots and traversal errors suppress missing candidates. A disconnected mount that still appears as a readable empty folder cannot be distinguished from an empty folder: missing candidates are review evidence, never deletion instructions. ZIP membership, ROM integrity and concurrent filesystem changes are not certified. Only stored locations are reviewed; the command does not find replacements or remove entries. No new core or controller behavior is introduced.
+
+Version 1.4.0 validation covers Windows CI, strict types, dependency audit and CodeQL, plus read-only location-review regressions. The tagged Windows build verifies packaged startup, generated-cartridge runtime targets and archive layout. Interactive location-review acceptance in the packaged Windows app, physical controllers and user-owned games remain unverified.

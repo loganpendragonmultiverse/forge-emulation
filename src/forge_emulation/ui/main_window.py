@@ -4,6 +4,7 @@ import logging
 import subprocess
 import time
 from contextlib import suppress
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLayout,
     QLineEdit,
@@ -47,11 +49,20 @@ from ..controller import (
 from ..database import LibraryDatabase
 from ..diagnostics import diagnostic_text
 from ..launch import GameLauncher, LaunchError
+from ..library_tools import LibraryTools
+from ..location_review import LocationRecord, LocationReview, preview_locations
 from ..models import Game, GameCandidate
+from ..organization import SORTS, STATUSES, Annotation, LibraryOrganizer
 from ..paths import AppPaths
+from ..profile_exchange import export_profiles, read_profiles
+from ..relink import RelinkPlan, apply_relink, preview_relink
 from ..scanner import scan_paths
 from ..settings import RuntimeSettings, SettingsStore
+from ..state_browser import browse_states
 from ..systems import SYSTEM_BY_ID, SYSTEMS
+from .library_workbench import LibraryWorkbench
+from .media_dialog import MediaDialog
+from .organization_dialogs import AnnotationDialog, CollectionsDialog, HistoryDialog
 
 APP_STYLE = """
 QMainWindow, QDialog, QMessageBox, QWidget#Root {
@@ -60,7 +71,7 @@ QMainWindow, QDialog, QMessageBox, QWidget#Root {
 }
 QWidget { font-family: "Segoe UI"; font-size: 14px; color: #f2f4f8; }
 QFrame#Sidebar { background: #0e1118; border-right: 1px solid #202632; }
-QLabel#Brand { font-size: 22px; font-weight: 700; color: #ffffff; }
+QLabel#Brand { font-size: 17px; font-weight: 700; color: #ffffff; }
 QLabel#BrandMark { background: #f05a47; border-radius: 9px; color: white; font-weight: 800; }
 QLabel#Eyebrow { color: #f47a67; font-size: 12px; font-weight: 700; }
 QLabel#Title { color: #ffffff; font-size: 32px; font-weight: 700; }
@@ -90,6 +101,14 @@ QPushButton#Favorite {
     text-align: center;
 }
 QPushButton#Favorite:checked { color: #f5c451; }
+QPlainTextEdit, QListWidget, QTableWidget {
+ background: #141821; color: #f2f4f8; border: 1px solid #343c4b;
+}
+QHeaderView::section {
+ background: #202632; color: #f2f4f8; padding: 7px; border: 1px solid #343c4b;
+}
+QTableWidget::item:selected { background: #3b465a; color: white; }
+QListWidget::item:selected { background: #3b465a; color: white; }
 QLineEdit {
     background: #141821;
     border: 1px solid #272e3a;
@@ -187,13 +206,63 @@ class ScanTask(QRunnable):
             self.signals.failed.emit(str(exc))
 
 
+class RelinkTask(QRunnable):
+    def __init__(self, database: LibraryDatabase, root: Path):
+        super().__init__()
+        self.database, self.root = database, root
+        self.signals = LocationReviewSignals()
+
+    def run(self) -> None:
+        try:
+            self.signals.completed.emit(preview_relink(self.database, self.root))
+        except Exception as error:
+            self.signals.failed.emit(str(error))
+
+
+class LocationReviewSignals(QObject):
+    completed = Signal(object)
+    failed = Signal(str)
+
+
+class LocationReviewTask(QRunnable):
+    def __init__(self, records: list[LocationRecord], root: Path):
+        super().__init__()
+        self.records = records
+        self.root = root
+        self.signals = LocationReviewSignals()
+
+    def run(self) -> None:
+        try:
+            self.signals.completed.emit(preview_locations(self.records, self.root))
+        except Exception:
+            self.signals.failed.emit("Location review could not finish; no library data changed.")
+
+
 class GameDetailsDialog(QDialog):
-    def __init__(self, game: Game, edit: Any, settings: Any, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        game: Game,
+        edit: Any,
+        settings: Any,
+        parent: QWidget | None = None,
+        *,
+        states: Any = None,
+        organize: Any = None,
+        history: Any = None,
+        media: Any = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"{game.display_title} — ForgeEmulation")
         self.setMinimumWidth(620)
         self.setStyleSheet(APP_STYLE)
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        self.resize(720, 700)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
         layout.setContentsMargins(28, 28, 28, 28)
         layout.setSpacing(16)
 
@@ -238,6 +307,10 @@ class GameDetailsDialog(QDialog):
         settings_button = QPushButton("Game settings")
         settings_button.setObjectName("Secondary")
         settings_button.clicked.connect(lambda: settings(game))
+        states_button = QPushButton("Save-state browser")
+        states_button.setObjectName("Secondary")
+        states_button.clicked.connect(lambda: states(game) if states else None)
+        actions.addWidget(states_button)
         close_button = QPushButton("Close")
         close_button.setObjectName("Secondary")
         close_button.clicked.connect(self.accept)
@@ -246,6 +319,17 @@ class GameDetailsDialog(QDialog):
         actions.addStretch()
         actions.addWidget(close_button)
         layout.addLayout(actions)
+        organization = QHBoxLayout()
+        for action_label, callback in [
+            ("Notes, status & collections", organize),
+            ("Play history", history),
+            ("States & screenshots", media),
+        ]:
+            button = QPushButton(action_label)
+            button.setObjectName("Secondary")
+            button.clicked.connect(lambda _checked=False, cb=callback: cb(game) if cb else None)
+            organization.addWidget(button)
+        layout.addLayout(organization)
 
     def _edit_and_close(self, edit: Any, game: Game) -> None:
         edit(game)
@@ -262,7 +346,16 @@ class SettingsDialog(QDialog):
         self.setWindowTitle("Game settings" if game else "Display & audio settings")
         self.setMinimumWidth(480)
         self.setStyleSheet(APP_STYLE)
-        layout = QVBoxLayout(self)
+        self.resize(600, 700)
+        outer = QVBoxLayout(self)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        content.setObjectName("SettingsContent")
+        content.setStyleSheet("QWidget#SettingsContent { background-color: #11151f; }")
+        layout = QVBoxLayout(content)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
         layout.setContentsMargins(28, 26, 28, 26)
         title = QLabel("Game override" if game else "Display & audio")
         title.setObjectName("Title")
@@ -292,6 +385,24 @@ class SettingsDialog(QDialog):
         self.slot = QSpinBox()
         self.slot.setRange(1, 9)
         self.slot.setValue(current.state_slot)
+        self.rewind = QComboBox()
+        for seconds in [0, 10, 30, 60]:
+            self.rewind.addItem(
+                "Off" if not seconds else f"Up to {seconds} seconds (64 MiB cap)", seconds
+            )
+        self.rewind.setCurrentIndex(max(0, self.rewind.findData(current.rewind_seconds)))
+        self.fast_speed = QComboBox()
+        self.fast_speed.addItem("2x", 2)
+        self.fast_speed.addItem("4x", 4)
+        self.fast_speed.setCurrentIndex(
+            max(0, self.fast_speed.findData(current.fast_forward_speed))
+        )
+        self.suspend = QCheckBox("Save separate suspend snapshot on clean exit")
+        self.suspend.setChecked(current.suspend_on_exit)
+        self.resume = QCheckBox("Resume compatible suspend snapshot on launch")
+        self.resume.setChecked(current.resume_on_launch)
+        self.focus_pause = QCheckBox("Pause game when its window loses focus")
+        self.focus_pause.setChecked(current.pause_on_focus_loss)
         for label_text, widget in (
             ("", self.fullscreen),
             ("Scaling", self.scaling),
@@ -299,6 +410,11 @@ class SettingsDialog(QDialog):
             ("Volume", self.volume),
             ("", self.muted),
             ("Default state slot", self.slot),
+            ("Rewind history", self.rewind),
+            ("Hold Left Shift to fast-forward", self.fast_speed),
+            ("", self.suspend),
+            ("", self.resume),
+            ("", self.focus_pause),
         ):
             if label_text:
                 label = QLabel(label_text.upper())
@@ -318,19 +434,17 @@ class SettingsDialog(QDialog):
             volume=self.volume.value(),
             muted=self.muted.isChecked(),
             state_slot=self.slot.value(),
+            rewind_seconds=int(self.rewind.currentData()),
+            fast_forward_speed=int(self.fast_speed.currentData()),
+            suspend_on_exit=self.suspend.isChecked(),
+            resume_on_launch=self.resume.isChecked(),
+            pause_on_focus_loss=self.focus_pause.isChecked(),
         )
 
     def _save(self) -> None:
         values = self._values()
         if self.game:
-            override = {
-                "fullscreen": values.fullscreen,
-                "scaling": values.scaling,
-                "video_filter": values.video_filter,
-                "volume": values.volume,
-                "muted": values.muted,
-                "state_slot": values.state_slot,
-            }
+            override = asdict(values)
             self.store.set_game_override(
                 self.game.id, override if self.override.isChecked() else None
             )
@@ -414,6 +528,7 @@ class ControllerSettingsDialog(QDialog):
         self.joystick: pygame.joystick.JoystickType | None = None
         self.waiting_action: str | None = None
         self.capture_baseline: set[tuple[str, int, str, int]] = set()
+        self.wizard_actions: list[str] = []
         self.mapping_buttons: dict[str, QPushButton] = {}
         self.setWindowTitle("Controller settings — ForgeEmulation")
         self.setMinimumSize(620, 720)
@@ -436,6 +551,25 @@ class ControllerSettingsDialog(QDialog):
         self.controller_select = QComboBox()
         self.controller_select.currentIndexChanged.connect(self._controller_changed)
         outer.addWidget(self.controller_select)
+        self.wizard_status = QLabel(
+            "Choose Guided mapping to configure all gameplay and library actions."
+        )
+        self.wizard_status.setWordWrap(True)
+        outer.addWidget(self.wizard_status)
+        self.live_inputs = QLabel("Connect a controller to see live button and axis feedback.")
+        self.live_inputs.setWordWrap(True)
+        outer.addWidget(self.live_inputs)
+        tools = QHBoxLayout()
+        for label, callback in [
+            ("Guided mapping", self._start_wizard),
+            ("Import profiles", self._import_profiles),
+            ("Export profiles", self._export_profiles),
+        ]:
+            button = QPushButton(label)
+            button.setObjectName("Secondary")
+            button.clicked.connect(callback)
+            tools.addWidget(button)
+        outer.addLayout(tools)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -484,8 +618,9 @@ class ControllerSettingsDialog(QDialog):
         button = QPushButton("Not assigned")
         button.setObjectName("Secondary")
         button.setMinimumWidth(190)
+        button.setMinimumHeight(40)
         button.clicked.connect(
-            lambda _checked=False, selected=action: self._begin_capture(selected)
+            lambda _checked=False, selected=action: self._manual_capture(selected)
         )
         self.mapping_buttons[action] = button
         row.addWidget(label, 1)
@@ -517,6 +652,8 @@ class ControllerSettingsDialog(QDialog):
         self._refresh_labels()
 
     def _controller_changed(self, index: int) -> None:
+        self.wizard_actions = []
+        self.waiting_action = None
         if index < 0 or not self.controller_select.currentData():
             self.joystick = None
             return
@@ -539,11 +676,19 @@ class ControllerSettingsDialog(QDialog):
             button.setEnabled(bool(guid))
             button.setText(binding_label(bindings.get(action)))
 
+    def _manual_capture(self, action: str) -> None:
+        self.wizard_actions = []
+        self._refresh_labels()
+        self._begin_capture(action)
+
     def _begin_capture(self, action: str) -> None:
         if not self.joystick:
             return
         self._pump()
         self.waiting_action = action
+        self.wizard_status.setText(
+            "Map " + action.replace("_", " ") + ": release controls, then press the desired input."
+        )
         self.capture_baseline = capture_inputs(self.joystick)
         self.mapping_buttons[action].setText("Press a control…")
 
@@ -554,9 +699,19 @@ class ControllerSettingsDialog(QDialog):
         if connected_count != visible_count:
             self._refresh_controllers()
             return
-        if not self.waiting_action or not self.joystick:
+        if not self.joystick:
             return
         active = capture_inputs(self.joystick)
+        self.live_inputs.setText(
+            "Live controls: "
+            + (
+                ", ".join(binding_label(captured_binding(item)) for item in sorted(active))
+                or "released / neutral"
+            )
+        )
+        if not self.waiting_action:
+            return
+        self.capture_baseline.intersection_update(active)
         new_inputs = active - self.capture_baseline
         if not new_inputs:
             return
@@ -570,10 +725,61 @@ class ControllerSettingsDialog(QDialog):
             captured_binding(value),
         )
         self._refresh_labels()
+        if self.wizard_actions:
+            self._begin_capture(self.wizard_actions.pop(0))
+        else:
+            self.wizard_status.setText(
+                "Mapping saved. Test the assigned control below or continue in a game."
+            )
+
+    def _start_wizard(self) -> None:
+        if not self.joystick:
+            return
+        self.wizard_actions = [item[0] for item in GAMEPLAY_ACTIONS] + [
+            item[0] for item in LIBRARY_ACTIONS
+        ]
+        self._begin_capture(self.wizard_actions.pop(0))
+
+    def _import_profiles(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Import controller profiles", "", "JSON (*.json)"
+        )
+        if not filename:
+            return
+        try:
+            profiles = read_profiles(Path(filename))
+            overlap = set(profiles) & set(self.store.profiles)
+            if (
+                QMessageBox.question(
+                    self,
+                    "Review profile import",
+                    f"Import {len(profiles)} controller profiles? "
+                    f"{len(overlap)} existing controller profiles will be replaced.",
+                )
+                != QMessageBox.StandardButton.Yes
+            ):
+                return
+            self.store.profiles.update(profiles)
+            self.store.save()
+            self._refresh_labels()
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "Profile import", str(error))
+
+    def _export_profiles(self) -> None:
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export controller profiles", "controller-profiles.json", "JSON (*.json)"
+        )
+        if not filename:
+            return
+        try:
+            export_profiles(self.store, Path(filename))
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "Profile export", str(error))
 
     def _reset(self) -> None:
         if not self.joystick:
             return
+        self.wizard_actions = []
         self.store.reset(self.joystick.get_guid(), self.joystick.get_name())
         self.waiting_action = None
         self._refresh_labels()
@@ -587,6 +793,7 @@ class GameCard(QFrame):
         play: Any,
         favorite: Any,
         details: Any,
+        annotation: Annotation | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -664,6 +871,20 @@ class GameCard(QFrame):
         meta = QLabel(activity)
         meta.setObjectName("Muted")
         layout.addWidget(meta)
+        annotation = annotation or Annotation()
+        progress = QLabel(
+            annotation.status + (" · " + "★" * annotation.rating if annotation.rating else "")
+        )
+        progress.setObjectName("Muted")
+        progress.setWordWrap(True)
+        layout.addWidget(progress)
+        if annotation.tags:
+            tags = QLabel(", ".join(annotation.tags))
+            tags.setObjectName("Muted")
+            tags.setWordWrap(True)
+            tags.setMaximumHeight(42)
+            tags.setToolTip(", ".join(annotation.tags))
+            layout.addWidget(tags)
 
         actions = QHBoxLayout()
         play_button = QPushButton("Play")
@@ -683,6 +904,8 @@ class MainWindow(QMainWindow):
     def __init__(self, database: LibraryDatabase, paths: AppPaths):
         super().__init__()
         self.database = database
+        self.organizer = LibraryOrganizer(database)
+        self.library_tools = LibraryTools(self.organizer)
         self.paths = paths
         self.launcher = GameLauncher(paths)
         self.thread_pool = QThreadPool.globalInstance()
@@ -700,6 +923,8 @@ class MainWindow(QMainWindow):
         self._controller_states: dict[str, bool] = {}
         self._controller_repeat_at: dict[str, float] = {}
         self._grid_columns = 0
+        self.page_index = 0
+        self.page_size = 60
         self.nav_buttons: list[QPushButton] = []
         self.setWindowTitle("ForgeEmulation")
         self.setMinimumSize(1040, 680)
@@ -761,6 +986,15 @@ class MainWindow(QMainWindow):
         nav_layout.addWidget(self.all_button)
         nav_layout.addWidget(self.recent_button)
         nav_layout.addWidget(self.favorite_button)
+        for label, callback in [
+            ("Collections && metadata", self.manage_collections),
+            ("Play history", self.show_history),
+            ("Library workbench", self.open_workbench),
+        ]:
+            button = QPushButton(label)
+            button.setObjectName("Secondary")
+            button.clicked.connect(callback)
+            nav_layout.addWidget(button)
         nav_layout.addSpacing(14)
 
         systems_label = QLabel("SYSTEMS")
@@ -789,6 +1023,13 @@ class MainWindow(QMainWindow):
         self.backup_button.setObjectName("Secondary")
         self.backup_button.clicked.connect(self.backup_restore)
         nav_layout.addWidget(self.backup_button)
+        self.location_review_button = QPushButton("Review game locations")
+        self.location_review_button.setObjectName("Secondary")
+        self.location_review_button.clicked.connect(self.review_locations)
+        nav_layout.addWidget(self.location_review_button)
+        relink_button = QPushButton("Find moved game files")
+        relink_button.clicked.connect(self.find_moved_files)
+        nav_layout.addWidget(relink_button)
         self.diagnostics_button = QPushButton("Diagnostics")
         self.diagnostics_button.setObjectName("Secondary")
         self.diagnostics_button.clicked.connect(self.show_diagnostics)
@@ -841,6 +1082,63 @@ class MainWindow(QMainWindow):
         header.addWidget(self.header_controls)
         content_layout.addLayout(header)
 
+        self.organization_controls = QWidget()
+        filter_layout = QVBoxLayout(self.organization_controls)
+        filter_layout.setContentsMargins(0, 0, 0, 0)
+        row = QHBoxLayout()
+        self.collection_filter = QComboBox()
+        self.collection_filter.addItem("All collections", "")
+        self.status_filter = QComboBox()
+        self.status_filter.addItem("All play statuses", "")
+        for value in STATUSES:
+            self.status_filter.addItem(value, value)
+        self.sort_order = QComboBox()
+        self.sort_order.addItems(SORTS)
+        for label, widget in [
+            ("Collection", self.collection_filter),
+            ("Play status", self.status_filter),
+            ("Sort", self.sort_order),
+        ]:
+            widget.setAccessibleName(label)
+            row.addWidget(widget)
+            widget.currentIndexChanged.connect(self.refresh)
+        filter_layout.addLayout(row)
+        row = QHBoxLayout()
+        self.tag_filter = QLineEdit()
+        self.tag_filter.setPlaceholderText("Filter by exact tag")
+        self.tag_filter.setAccessibleName("Tag filter")
+        self.tag_filter.textChanged.connect(self.refresh)
+        self.rating_filter = QComboBox()
+        self.rating_filter.addItem("Any rating", 0)
+        for rating in range(1, 6):
+            self.rating_filter.addItem(f"{rating}+ stars", rating)
+        self.rating_filter.currentIndexChanged.connect(self.refresh)
+        self.unplayed_filter = QCheckBox("Never launched")
+        self.unplayed_filter.toggled.connect(self.refresh)
+        clear = QPushButton("Clear filters")
+        clear.clicked.connect(self.clear_organization_filters)
+        row.addWidget(self.tag_filter, 1)
+        row.addWidget(self.rating_filter)
+        row.addWidget(self.unplayed_filter)
+        row.addWidget(clear)
+        filter_layout.addLayout(row)
+        self.saved_views = QComboBox()
+        self.saved_views.addItem("Saved views", "")
+        self.saved_views.currentIndexChanged.connect(self.load_view)
+        view_row = QHBoxLayout()
+        view_row.addWidget(self.saved_views, 1)
+        for label, callback in [
+            ("Save this view", self.save_view),
+            ("Remove saved view", self.remove_view),
+        ]:
+            button = QPushButton(label)
+            button.clicked.connect(callback)
+            view_row.addWidget(button)
+        filter_layout.addLayout(view_row)
+        content_layout.addWidget(self.organization_controls)
+        self.reload_collections()
+        self.reload_views()
+
         self.system_info_card = QFrame()
         self.system_info_card.setObjectName("SystemInfo")
         system_info_layout = QHBoxLayout(self.system_info_card)
@@ -878,6 +1176,14 @@ class MainWindow(QMainWindow):
         self.status = QLabel("")
         self.status.setObjectName("Muted")
         section.addWidget(self.section_title)
+        self.previous_page = QPushButton("Previous")
+        self.previous_page.clicked.connect(lambda: self.change_page(-1))
+        self.next_page = QPushButton("Next")
+        self.next_page.clicked.connect(lambda: self.change_page(1))
+        self.page_label = QLabel()
+        section.addWidget(self.previous_page)
+        section.addWidget(self.page_label)
+        section.addWidget(self.next_page)
         section.addStretch()
         section.addWidget(self.status)
         content_layout.addWidget(self.section_widget)
@@ -968,6 +1274,9 @@ class MainWindow(QMainWindow):
                     ("Quick menu", "Escape or Tab"),
                     ("Pause or resume", "Space"),
                     ("Save / load state", "F5 / F8 use the selected slot (1–9)"),
+                    ("Suspend / resume / undo", "F6 / F7 / F9"),
+                    ("Rewind / fast-forward", "Hold Backspace (opt-in) / Left Shift"),
+                    ("Step frame", "Pause with Space, then press ."),
                     ("Screenshot", "F12"),
                     ("Reset", "Ctrl+R"),
                     ("Fullscreen", "Alt+Enter"),
@@ -1009,6 +1318,29 @@ class MainWindow(QMainWindow):
                     ),
                     ("Per-game settings", "Open Details → Game settings to create an override."),
                     ("Metadata", "Open Details → Edit title & artwork. Files remain local."),
+                    (
+                        "Organization",
+                        "Details → Notes, status & collections sets progress, "
+                        "rating, tags and notes.",
+                    ),
+                    (
+                        "Collections",
+                        "Collections & metadata creates, renames and removes named groups.",
+                    ),
+                    (
+                        "Find games",
+                        "Combine collection, status, tag, rating and Never launched "
+                        "filters; choose a sort order.",
+                    ),
+                    (
+                        "History",
+                        "Play history lists recent sessions with duration and exit reason.",
+                    ),
+                    (
+                        "Exchange",
+                        "Collections & metadata exports local organization or previews "
+                        "a content-matched import.",
+                    ),
                     (
                         "Backup & restore",
                         "Includes library data, saves, states, screenshots, artwork, "
@@ -1090,6 +1422,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("F1"), self, lambda: self._select_filter("documentation"))
 
     def _select_filter(self, target: str | None) -> None:
+        self.page_index = 0
         self.documentation_open = target == "documentation"
         self.current_system = target if target in SYSTEM_BY_ID else None
         self.favorites_only = target == "favorites"
@@ -1248,16 +1581,7 @@ class MainWindow(QMainWindow):
 
     def _set_fullscreen_default(self, enabled: bool) -> None:
         current = self.settings_store.global_settings
-        self.settings_store.set_global(
-            RuntimeSettings(
-                fullscreen=enabled,
-                scaling=current.scaling,
-                video_filter=current.video_filter,
-                volume=current.volume,
-                muted=current.muted,
-                state_slot=current.state_slot,
-            )
-        )
+        self.settings_store.set_global(replace(current, fullscreen=enabled))
 
     def edit_metadata(self, game: Game) -> None:
         MetadataDialog(game, self.paths, self.database, self).exec()
@@ -1306,6 +1630,10 @@ class MainWindow(QMainWindow):
                 try:
                     restore_backup(self.paths, Path(selected))
                     self.database = LibraryDatabase(self.paths.database)
+                    self.organizer = LibraryOrganizer(self.database)
+                    self.library_tools = LibraryTools(self.organizer)
+                    self.reload_collections()
+                    self.reload_views()
                     self.launcher = GameLauncher(self.paths)
                     self.settings_store = SettingsStore(self.paths.preferences)
                     self.controller_store = ControllerProfileStore.load(
@@ -1368,7 +1696,9 @@ class MainWindow(QMainWindow):
             self.section_widget.hide()
             self.game_scroll.hide()
             self.documentation_scroll.show()
+            self.organization_controls.hide()
             return
+        self.organization_controls.show()
         self.header_controls.show()
         self.metrics_widget.show()
         self.section_widget.show()
@@ -1383,16 +1713,36 @@ class MainWindow(QMainWindow):
                 favorites_only=self.favorites_only,
             )
         )
+        games = self.organizer.select(
+            games,
+            status=str(self.status_filter.currentData() or ""),
+            collection=str(self.collection_filter.currentData() or ""),
+            tag=self.tag_filter.text().strip(),
+            minimum_rating=int(self.rating_filter.currentData() or 0),
+            unplayed=self.unplayed_filter.isChecked(),
+            sort=self.sort_order.currentText(),
+        )
+        self.visible_games = games
+        pages = max(1, (len(games) + self.page_size - 1) // self.page_size)
+        self.page_index = min(self.page_index, pages - 1)
+        self.page_label.setText(f"Page {self.page_index + 1} / {pages}")
+        self.previous_page.setEnabled(self.page_index > 0)
+        self.next_page.setEnabled(self.page_index < pages - 1)
+        page_games = games[
+            self.page_index * self.page_size : (self.page_index + 1) * self.page_size
+        ]
         self._clear_layout(self.grid)
         width = max(720, self.game_scroll.viewport().width(), self.width() - 322)
         columns = max(2, min(4, width // 285))
         self._grid_columns = columns
-        for index, game in enumerate(games):
+        annotations = self.organizer.all_annotations()
+        for index, game in enumerate(page_games):
             card = GameCard(
                 game,
                 play=self.play_game,
                 favorite=self.toggle_favorite,
                 details=self.show_details,
+                annotation=annotations.get(game.id, Annotation()),
             )
             self.grid.addWidget(card, index // columns, index % columns)
         if not games:
@@ -1401,7 +1751,11 @@ class MainWindow(QMainWindow):
             empty.setMinimumHeight(210)
             empty_layout = QVBoxLayout(empty)
             empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            title = QLabel("Your library is ready for its first game")
+            title = QLabel(
+                "No games match this view"
+                if self.database.list_games()
+                else "Your library is ready for its first game"
+            )
             title.setObjectName("CardTitle")
             body = QLabel(
                 "Choose Add game folder or drop a folder here.\n"
@@ -1472,9 +1826,92 @@ class MainWindow(QMainWindow):
             widget = item.widget()
             child_layout = item.layout()
             if widget:
+                widget.hide()
                 widget.deleteLater()
             elif child_layout:
                 MainWindow._clear_layout(child_layout)
+
+    def find_moved_files(self) -> None:
+        selected = QFileDialog.getExistingDirectory(
+            self, "Choose replacement folder to hash and inspect"
+        )
+        if not selected:
+            return
+        task = RelinkTask(self.database, Path(selected))
+        task.signals.completed.connect(self.review_relink)
+        task.signals.failed.connect(
+            lambda text: QMessageBox.warning(self, "Relink preview failed", text)
+        )
+        self.thread_pool.start(task)
+
+    def review_relink(self, plan: RelinkPlan) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Review content-verified locations")
+        dialog.resize(800, 560)
+        layout = QVBoxLayout(dialog)
+        note = QLabel(
+            f"{len(plan.matches)} known game matches; {plan.unmatched} unknown games skipped. "
+            f"{len(plan.errors)} scan errors. Apply rechecks content and adds verified locations; "
+            "old locations, metadata, history and saves remain intact. No ROM files are changed."
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        report = QPlainTextEdit()
+        report.setReadOnly(True)
+        report.setPlainText(
+            "\n".join(
+                f"{c.title} · {c.system_id}\n{c.source_path}"
+                + (f" :: {c.archive_member}" if c.archive_member else "")
+                for c in plan.matches
+            )
+            + ("\nErrors:\n" + "\n".join(plan.errors) if plan.errors else "")
+        )
+        layout.addWidget(report)
+        apply_button = QPushButton("Verify again and add these locations")
+        apply_button.setEnabled(bool(plan.matches) and not plan.errors)
+
+        def apply() -> None:
+            try:
+                count = apply_relink(self.database, plan)
+                dialog.accept()
+                self.refresh()
+                QMessageBox.information(
+                    self, "Verified locations added", f"Updated {count} known games."
+                )
+            except (OSError, ValueError) as error:
+                QMessageBox.warning(dialog, "Locations not changed", str(error))
+
+        apply_button.clicked.connect(apply)
+        layout.addWidget(apply_button)
+        close = QPushButton("Cancel")
+        close.clicked.connect(dialog.reject)
+        layout.addWidget(close)
+        dialog.exec()
+
+    def review_locations(self) -> None:
+        selected = QFileDialog.getExistingDirectory(
+            self, "Choose a game folder to review (read-only)"
+        )
+        if not selected:
+            return
+        task = LocationReviewTask(self.database.location_records(), Path(selected))
+        task.signals.completed.connect(self._show_location_review)
+        task.signals.failed.connect(lambda text: QMessageBox.warning(self, "Location review", text))
+        self.thread_pool.start(task)
+
+    def _show_location_review(self, report: LocationReview) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Review game locations — read-only")
+        dialog.resize(820, 520)
+        layout = QVBoxLayout(dialog)
+        editor = QPlainTextEdit()
+        editor.setReadOnly(True)
+        editor.setPlainText(report.as_text())
+        layout.addWidget(editor)
+        close = QPushButton("Close")
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        dialog.exec()
 
     def choose_folder(self) -> None:
         selected = QFileDialog.getExistingDirectory(self, "Choose a game folder")
@@ -1508,8 +1945,193 @@ class MainWindow(QMainWindow):
         self.database.set_favorite(game.id, favorite)
         self.refresh()
 
+    def show_states(self, game: Game) -> None:
+        system = SYSTEM_BY_ID[game.system_id]
+        directory = self.paths.states / game.system_id / game.sha256[:24]
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Save-state browser")
+        dialog.setMinimumSize(620, 500)
+        dialog.setStyleSheet(APP_STYLE)
+        layout = QVBoxLayout(dialog)
+        heading = QLabel("Save states · " + game.display_title)
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.viewport().setStyleSheet("background: #0b0e13;")
+        content = QWidget()
+        content.setStyleSheet("background: #0b0e13;")
+        rows = QVBoxLayout(content)
+        states = browse_states(directory, game.id, system.core_name, system.core_version)
+        if not states:
+            rows.addWidget(QLabel("No save states. Save a slot with F5 during gameplay."))
+        for state in states:
+            text = QLabel(
+                f"Slot {state['slot']} · {state['created_at']}\n"
+                f"Core {state['core_version']}\n"
+                f"{state['warning'] or 'Matches current game and core version'}"
+            )
+            text.setWordWrap(True)
+            rows.addWidget(text)
+            if state["thumbnail"]:
+                image = QLabel()
+                image.setPixmap(QPixmap(state["thumbnail"]))
+                rows.addWidget(image)
+            button = QPushButton(f"Use slot {state['slot']} on next launch")
+            button.setEnabled(not state["warning"])
+
+            def select_slot(_checked: bool = False, slot: int = int(state["slot"])) -> None:
+                store = SettingsStore(self.paths.preferences)
+                values = dict(store.game_overrides.get(game.id, {}))
+                values["state_slot"] = slot
+                store.set_game_override(game.id, values)
+                dialog.accept()
+
+            button.clicked.connect(select_slot)
+            rows.addWidget(button)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
+        dialog.exec()
+
+    def change_page(self, delta: int) -> None:
+        self.page_index = max(0, self.page_index + delta)
+        self.refresh()
+        self.game_scroll.verticalScrollBar().setValue(0)
+
+    def open_workbench(self) -> None:
+        LibraryWorkbench(self.library_tools, getattr(self, "visible_games", []), self).exec()
+        self.refresh()
+
+    def show_media(self, game: Game) -> None:
+        MediaDialog(self.paths, game, self).exec()
+
+    def reload_views(self) -> None:
+        self.saved_views.blockSignals(True)
+        self.saved_views.clear()
+        self.saved_views.addItem("Saved views", "")
+        for name in self.library_tools.views():
+            self.saved_views.addItem(name, name)
+        self.saved_views.blockSignals(False)
+
+    def current_view(self) -> dict[str, Any]:
+        return {
+            "query": self.search.text(),
+            "system": self.current_system or "",
+            "favorites": self.favorites_only,
+            "recent": self.recent_only,
+            "status": self.status_filter.currentData() or "",
+            "collection": self.collection_filter.currentData() or "",
+            "tag": self.tag_filter.text(),
+            "minimum_rating": self.rating_filter.currentData(),
+            "unplayed": self.unplayed_filter.isChecked(),
+            "sort": self.sort_order.currentText(),
+        }
+
+    def save_view(self) -> None:
+        name, accepted = QInputDialog.getText(self, "Save library view", "View name")
+        if not accepted:
+            return
+        try:
+            if (
+                name in self.library_tools.views()
+                and QMessageBox.question(self, "Replace saved view", "Replace this existing view?")
+                != QMessageBox.StandardButton.Yes
+            ):
+                return
+            self.library_tools.save_view(name, self.current_view())
+            self.reload_views()
+        except ValueError as error:
+            QMessageBox.warning(self, "View not saved", str(error))
+
+    def remove_view(self) -> None:
+        name = str(self.saved_views.currentData() or "")
+        if (
+            name
+            and QMessageBox.question(self, "Remove saved view", "Remove this saved filter view?")
+            == QMessageBox.StandardButton.Yes
+        ):
+            self.library_tools.delete_view(name)
+            self.reload_views()
+
+    def load_view(self) -> None:
+        name = str(self.saved_views.currentData() or "")
+        if not name:
+            return
+        value = self.library_tools.views().get(name)
+        if not value:
+            return
+        self.search.setText(value["query"])
+        self.status_filter.setCurrentIndex(max(0, self.status_filter.findData(value["status"])))
+        self.collection_filter.setCurrentIndex(
+            max(0, self.collection_filter.findData(value["collection"]))
+        )
+        self.tag_filter.setText(value["tag"])
+        self.rating_filter.setCurrentIndex(
+            max(0, self.rating_filter.findData(value["minimum_rating"]))
+        )
+        self.sort_order.setCurrentText(value["sort"])
+        self.unplayed_filter.setChecked(value["unplayed"])
+        target = (
+            "favorites"
+            if value["favorites"]
+            else "recent"
+            if value["recent"]
+            else value["system"] or None
+        )
+        self._select_filter(target)
+
+    def reload_collections(self) -> None:
+        selected = self.collection_filter.currentData()
+        self.collection_filter.blockSignals(True)
+        self.collection_filter.clear()
+        self.collection_filter.addItem("All collections", "")
+        for name in self.organizer.collections():
+            self.collection_filter.addItem(name, name)
+        self.collection_filter.setCurrentIndex(max(0, self.collection_filter.findData(selected)))
+        self.collection_filter.blockSignals(False)
+
+    def manage_collections(self) -> None:
+        CollectionsDialog(self.organizer, self).exec()
+        self.reload_collections()
+        self.refresh()
+
+    def organize_game(self, game: Game) -> None:
+        AnnotationDialog(self.organizer, game, self).exec()
+        self.refresh()
+
+    def show_history(self, game: Game | None = None) -> None:
+        # Qt clicked(bool) must not be mistaken for a game.
+        HistoryDialog(self.organizer, game if isinstance(game, Game) else None, self).exec()
+
+    def clear_organization_filters(self) -> None:
+        for widget in (
+            self.collection_filter,
+            self.status_filter,
+            self.sort_order,
+            self.rating_filter,
+        ):
+            widget.blockSignals(True)
+            widget.setCurrentIndex(0)
+            widget.blockSignals(False)
+        self.tag_filter.blockSignals(True)
+        self.tag_filter.clear()
+        self.tag_filter.blockSignals(False)
+        self.unplayed_filter.blockSignals(True)
+        self.unplayed_filter.setChecked(False)
+        self.unplayed_filter.blockSignals(False)
+        self.refresh()
+
     def show_details(self, game: Game) -> None:
-        GameDetailsDialog(game, self.edit_metadata, self.open_display_settings, self).exec()
+        GameDetailsDialog(
+            game,
+            self.edit_metadata,
+            self.open_display_settings,
+            self,
+            states=self.show_states,
+            organize=self.organize_game,
+            history=self.show_history,
+            media=self.show_media,
+        ).exec()
 
     def play_game(self, game: Game) -> None:
         if self.active_process and self.active_process.poll() is None:

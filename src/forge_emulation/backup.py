@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import sqlite3
 import tempfile
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -31,33 +33,46 @@ def _digest(path: Path) -> str:
 
 def export_backup(paths: AppPaths, target: Path) -> dict[str, object]:
     target.parent.mkdir(parents=True, exist_ok=True)
-    files: list[dict[str, object]] = []
-    for root_name in BACKUP_ROOTS:
-        source = paths.userdata / root_name
-        candidates = [source] if source.is_file() else source.rglob("*") if source.is_dir() else []
-        for file_path in candidates:
-            if file_path.is_file():
+    # Snapshot first: SQLite WAL/checkpoints and live saves must not change between
+    # checksum calculation and archive writing.
+    with tempfile.TemporaryDirectory(prefix="forge-emulation-backup-") as directory:
+        staging = Path(directory)
+        files: list[dict[str, object]] = []
+        for root_name in BACKUP_ROOTS:
+            source = paths.userdata / root_name
+            candidates = (
+                [source] if source.is_file() else source.rglob("*") if source.is_dir() else []
+            )
+            for file_path in candidates:
+                if not file_path.is_file() or file_path.is_symlink():
+                    continue
                 relative = file_path.relative_to(paths.userdata).as_posix()
+                snapshot = staging / relative
+                snapshot.parent.mkdir(parents=True, exist_ok=True)
+                if root_name == "library.sqlite3":
+                    with (
+                        closing(sqlite3.connect(file_path)) as origin,
+                        closing(sqlite3.connect(snapshot)) as destination,
+                    ):
+                        origin.backup(destination)
+                else:
+                    shutil.copyfile(file_path, snapshot)
                 files.append(
-                    {
-                        "path": relative,
-                        "size": file_path.stat().st_size,
-                        "sha256": _digest(file_path),
-                    }
+                    {"path": relative, "size": snapshot.stat().st_size, "sha256": _digest(snapshot)}
                 )
-    manifest: dict[str, object] = {
-        "format": "ForgeEmulation backup",
-        "schema": 1,
-        "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "files": files,
-    }
-    temporary = target.with_suffix(target.suffix + ".partial")
-    with ZipFile(temporary, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("forge-backup.json", json.dumps(manifest, indent=2))
-        for entry in files:
-            relative = str(entry["path"])
-            archive.write(paths.userdata / Path(relative), relative)
-    temporary.replace(target)
+        manifest: dict[str, object] = {
+            "format": "ForgeEmulation backup",
+            "schema": 1,
+            "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "files": files,
+        }
+        temporary = target.with_suffix(target.suffix + ".partial")
+        with ZipFile(temporary, "w", ZIP_DEFLATED) as archive:
+            archive.writestr("forge-backup.json", json.dumps(manifest, indent=2))
+            for entry in files:
+                relative = str(entry["path"])
+                archive.write(staging / relative, relative)
+        temporary.replace(target)
     return manifest
 
 

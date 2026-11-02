@@ -42,3 +42,48 @@ Manual acceptance for a release:
    and return from a filter or search with the configured library back button.
 
 The packaged verifier requires an explicit marker written only after the Qt window is created. A living PyInstaller crash dialog is not accepted as successful startup. The archive verifier also rejects nested wrapper folders, top-level runtime helpers, handoff files, and non-system `icuuc.dll` contamination.
+
+## Version 1.3.0: reviewed improvements
+
+Add a save-state browser with thumbnails and compatibility warnings, plus guided controller mapping, live input feedback and validated profile exchange.
+
+Browse nine save slots with capture timestamps, core versions and available thumbnails; select the next launch slot without changing game files. State loading rejects a different core version. Controller mapping walks through gameplay and library controls, waits for held controls to be released, and shows live inputs. Versioned profile import validates actions, binding types and limits before previewing replacement counts; export refuses existing files. Core binaries and pins remain unchanged. Automated tests use generated fixtures; physical-controller and user-owned-cartridge acceptance is required before the stable Windows release.
+
+Candidate validation: 53 automated tests passed at 92.03% coverage; packaged frontend and all nine generated-ROM runtime targets passed; ZIP layout and SHA-256 verified. Physical-controller and user-owned-game acceptance is pending.
+
+
+## Location-review acceptance
+
+Test existing/missing/outside paths, unavailable and interrupted folder scans, unreadable children, archive-member uncertainty, stable output and unchanged database/ROM data. Verify the review dialog and background scan in the Windows package. No hardware/runtime behavior changes are intended; existing runtime release gates remain required.
+
+## 1.5.0 organization acceptance
+
+The organization tests cover additive reopening, collection rename/conflict/removal, annotation
+validation, combined filters, stable sorting, read-only bounded history, path-free exports,
+content-match imports, unknown-game skipping and transactional rollback. Offscreen Qt acceptance
+edits annotations, selects collection memberships, combines filters, clears them and opens history.
+
+For hands-on acceptance: create two collections, add a game to both, enter notes/tags/rating,
+combine filters, rename and remove a collection, export metadata, change a note, import and review
+the match count, then use the recovery JSON to restore the prior note. Confirm favorites, ROM
+locations, saves and sessions survive. Physical controllers and user-owned cartridges cannot be
+certified by generated fixtures or offscreen tests and remain unverified until exercised.
+
+Windows PR CI for the organization implementation passed 84 tests at 93.34% coverage,
+Ruff formatting/lint, strict mypy, dependency audit and CodeQL on October 16. The tagged
+Windows packaging gate remains authoritative for the shipped binaries.
+
+## 1.6.0 acceptance
+
+Backend tests cover bounded rewind eviction, snapshot identity/checksum/size validation,
+legacy states, load rollback and undo, settings persistence, bulk transactions, saved views,
+CSV privacy/formula neutralization, media recovery rollback, and revision/content-checked
+relinking. Offscreen Qt tests exercise the workbench, views, pagination and media manager.
+Pinned-core Windows tests and the packaged-runtime gate exercise separate suspend/resume
+for all nine generated-cartridge targets. Preserve the 85% coverage gate.
+
+Manual testing later: hold rewind after playing; compare 2×/4× fast-forward, step a paused
+frame, switch focus, save/resume suspend and undo a load; try a real controller and legal
+cartridges. Review large-library pagination, bulk edits and saved filters, media export and
+recovery, and moved raw/ZIP games. Synthetic automated sessions do not establish real-game
+compatibility, physical controller acceptance, timing/audio quality or interactive package QA.

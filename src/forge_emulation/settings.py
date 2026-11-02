@@ -14,6 +14,11 @@ class RuntimeSettings:
     volume: int = 100
     muted: bool = False
     state_slot: int = 1
+    rewind_seconds: int = 0
+    fast_forward_speed: int = 2
+    suspend_on_exit: bool = False
+    resume_on_launch: bool = False
+    pause_on_focus_loss: bool = True
 
     def normalized(self) -> RuntimeSettings:
         return RuntimeSettings(
@@ -25,6 +30,11 @@ class RuntimeSettings:
             volume=max(0, min(100, int(self.volume))),
             muted=bool(self.muted),
             state_slot=max(1, min(9, int(self.state_slot))),
+            rewind_seconds=self.rewind_seconds if self.rewind_seconds in {0, 10, 30, 60} else 0,
+            fast_forward_speed=self.fast_forward_speed if self.fast_forward_speed in {2, 4} else 2,
+            suspend_on_exit=bool(self.suspend_on_exit),
+            resume_on_launch=bool(self.resume_on_launch),
+            pause_on_focus_loss=bool(self.pause_on_focus_loss),
         )
 
 
