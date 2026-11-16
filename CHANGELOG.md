@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.0 - 2026-11-16
+
+- Add a private play report with selectable date ranges, recorded time, unique game counts,
+  per-system totals, the top 20 games, and daily activity.
+
 ## 1.6.0 - 2026-10-16
 
 - Add bounded opt-in rewind, 2×/4× silent fast-forward, paused frame stepping and focus-loss pause.

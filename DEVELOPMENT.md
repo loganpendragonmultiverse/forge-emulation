@@ -53,3 +53,7 @@ Saved views are local preferences, and CSV notes require explicit selection.
 
 References: RetroArch rewind/fast-forward and save-state documentation, mGBA feature overview,
 and ES-DE custom collection guidance. These inform useful workflows, not a parity claim.
+
+## 1.7.0 play report
+
+The 1.7.0 play report groups existing session records by UTC end date in one read-only database query. No schema migration or runtime hook is required.

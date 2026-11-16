@@ -87,3 +87,7 @@ frame, switch focus, save/resume suspend and undo a load; try a real controller 
 cartridges. Review large-library pagination, bulk edits and saved filters, media export and
 recovery, and moved raw/ZIP games. Synthetic automated sessions do not establish real-game
 compatibility, physical controller acceptance, timing/audio quality or interactive package QA.
+
+## 1.7.0 play report
+
+Test UTC day boundaries including stored offsets, empty ranges, current title overrides, group totals, and periods that exclude a session at the upper boundary. In the packaged app, open Play report and switch periods and tabs.
