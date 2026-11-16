@@ -63,6 +63,7 @@ from ..systems import SYSTEM_BY_ID, SYSTEMS
 from .library_workbench import LibraryWorkbench
 from .media_dialog import MediaDialog
 from .organization_dialogs import AnnotationDialog, CollectionsDialog, HistoryDialog
+from .play_report_dialog import PlayReportDialog
 
 APP_STYLE = """
 QMainWindow, QDialog, QMessageBox, QWidget#Root {
@@ -989,6 +990,7 @@ class MainWindow(QMainWindow):
         for label, callback in [
             ("Collections && metadata", self.manage_collections),
             ("Play history", self.show_history),
+            ("Play report", self.show_play_report),
             ("Library workbench", self.open_workbench),
         ]:
             button = QPushButton(label)
@@ -2098,6 +2100,9 @@ class MainWindow(QMainWindow):
     def organize_game(self, game: Game) -> None:
         AnnotationDialog(self.organizer, game, self).exec()
         self.refresh()
+
+    def show_play_report(self) -> None:
+        PlayReportDialog(self.database, self).exec()
 
     def show_history(self, game: Game | None = None) -> None:
         # Qt clicked(bool) must not be mistaken for a game.

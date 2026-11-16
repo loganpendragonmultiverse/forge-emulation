@@ -88,6 +88,13 @@ before adding verified locations in one transaction. It preserves earlier locati
 organization, history and saves. Changed content or an incomplete scan prevents the whole apply.
 This operation links existing files; it never moves or edits a cartridge.
 
+## Play report (1.7.0)
+
+Open **Play report** in the library for a local summary of recorded play over the
+last 7, 30, 90, or 365 days. See total playtime, sessions, and unique games, then
+switch between system totals, the 20 most-played games, and daily activity.
+Reports use the recorded session end date in UTC and show current library titles.
+
 ## Quick start
 
 1. Download and extract the Windows x64 release.

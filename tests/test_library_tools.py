@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import csv
+from datetime import date
 
 import pytest
 
 from forge_emulation.database import LibraryDatabase
 from forge_emulation.library_tools import LibraryTools, validate_view
 from forge_emulation.organization import Annotation, LibraryOrganizer
+from forge_emulation.play_report import play_report
 from forge_emulation.scanner import scan_paths
 
 
@@ -96,3 +98,35 @@ def test_csv_excludes_paths_and_notes_unless_requested_and_neutralizes_formulas(
         tools.export_csv([game], target)
     tools.export_csv([game], tmp_path / "notes.csv", include_notes=True)
     assert "'\t=PRIVATE()" in (tmp_path / "notes.csv").read_text()
+
+
+def test_play_report_uses_utc_session_dates_and_current_titles(tools):
+    database = tools.organizer.database
+    first, second = database.list_games()[:2]
+    database.set_metadata(first.id, custom_title="Favorite cartridge", artwork_path=None)
+
+    def add(game_id, ended, seconds):
+        database.record_session(
+            game_id=game_id,
+            started_at=ended,
+            ended_at=ended,
+            duration_seconds=seconds,
+            core_filename="synthetic.dll",
+            core_version=None,
+            exit_reason="quit",
+        )
+
+    add(first.id, "2026-11-11T23:30:00-02:00", 45)
+    add(first.id, "2026-11-16T23:59:59Z", 55)
+    add(second.id, "2026-11-16T08:00:00+00:00", 50)
+    add(second.id, "2026-11-17T00:00:00Z", 200)
+    summary = play_report(database, date(2026, 11, 16), 5)
+    assert summary.games_played == 2
+    assert (summary.totals.sessions, summary.totals.seconds) == (3, 150)
+    assert summary.top_games[0].label == "Favorite cartridge"
+    assert summary.top_games[0].seconds == 100
+    assert [row.label for row in summary.by_day] == ["2026-11-16", "2026-11-12"]
+    assert sum(row.seconds for row in summary.by_system) == 150
+    assert play_report(database, date(2026, 11, 11), 1).top_games == ()
+    with pytest.raises(ValueError, match="1 to 366"):
+        play_report(database, date(2026, 11, 16), 0)
