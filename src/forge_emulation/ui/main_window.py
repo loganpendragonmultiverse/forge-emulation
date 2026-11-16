@@ -2102,7 +2102,7 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def show_play_report(self) -> None:
-        PlayReportDialog(self.root, self).exec()
+        PlayReportDialog(self.database, self).exec()
 
     def show_history(self, game: Game | None = None) -> None:
         # Qt clicked(bool) must not be mistaken for a game.
